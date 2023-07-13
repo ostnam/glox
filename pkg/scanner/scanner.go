@@ -3,6 +3,8 @@ package scanner
 import (
     "fmt"
     "unicode"
+
+    "github.com/ostnam/glox/pkg/utils"
 )
 
 func Scan(input []rune) ([]Token, []error) {
@@ -49,7 +51,11 @@ func scanToken(str []rune, pos *int, lineNumber *int) (*Token, error) {
         case ';': return mkToken(Semicolon, str, start, *pos, *lineNumber), nil
         case '*': return mkToken(Star, str, start, *pos, *lineNumber), nil
         case '!':
-            switch peek(str, *pos) {
+            c := utils.Peek(str, *pos)
+            if c == nil {
+                return mkToken(Bang, str, start, *pos, *lineNumber), nil
+            }
+            switch *c {
             case '=':
                 *pos += 1
                 return mkToken(BangEql, str, start, *pos, *lineNumber), nil
@@ -57,7 +63,11 @@ func scanToken(str []rune, pos *int, lineNumber *int) (*Token, error) {
                 return mkToken(Bang, str, start, *pos, *lineNumber), nil
             }
         case '=':
-            switch peek(str, *pos) {
+            c := utils.Peek(str, *pos)
+            if c == nil {
+                return mkToken(Eql, str, start, *pos, *lineNumber), nil
+            }
+            switch *c {
             case '=':
                 *pos += 1
                 return mkToken(EqlEql, str, start, *pos, *lineNumber), nil
@@ -65,7 +75,11 @@ func scanToken(str []rune, pos *int, lineNumber *int) (*Token, error) {
                 return mkToken(Eql, str, start, *pos, *lineNumber), nil
             }
         case '>':
-            switch peek(str, *pos) {
+            c := utils.Peek(str, *pos)
+            if c == nil {
+                return mkToken(Greater, str, start, *pos, *lineNumber), nil
+            }
+            switch *c {
             case '=':
                 *pos += 1
                 return mkToken(GreaterEql, str, start, *pos, *lineNumber), nil
@@ -73,7 +87,11 @@ func scanToken(str []rune, pos *int, lineNumber *int) (*Token, error) {
                 return mkToken(Greater, str, start, *pos, *lineNumber), nil
             }
         case '<':
-            switch peek(str, *pos) {
+            c := utils.Peek(str, *pos)
+            if c == nil {
+                return mkToken(Less, str, start, *pos, *lineNumber), nil
+            }
+            switch *c {
             case '=':
                 *pos += 1
                 return mkToken(LessEql, str, start, *pos, *lineNumber), nil
@@ -81,7 +99,11 @@ func scanToken(str []rune, pos *int, lineNumber *int) (*Token, error) {
                 return mkToken(Less, str, start, *pos, *lineNumber), nil
             }
         case '/':
-            switch peek(str, *pos) {
+            c := utils.Peek(str, *pos)
+            if c == nil {
+                return mkToken(Slash, str, start, *pos, *lineNumber), nil
+            }
+            switch *c {
             case '/':
                 consumeRestOfLine(str, pos)
                 return nil, nil
@@ -126,14 +148,22 @@ func scanStrLiteral(str []rune, pos *int, start int, line *int) (*Token, error) 
 
 func scanNumLiteral(str []rune, pos *int, start int, line *int) (*Token, error) {
     for !isAtEnd(str, *pos) {
-        switch peek(str, *pos) {
+        c := utils.Peek(str, *pos)
+        if c == nil {
+            break
+        }
+        switch *c {
         case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
             char := advance(str, pos)
             if char == nil {
                 break
             }
         case '.':
-            switch peek(str, *pos+1) {
+            c := utils.Peek(str, *pos+1)
+            if c == nil {
+                return nil, fmt.Errorf("Error lexing number: . not followed by a number, line %d", line)
+            }
+            switch *c {
             case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
                 char :=  advance(str, pos)
                 if char == nil {
@@ -189,13 +219,6 @@ func advance(str []rune, pos *int) *rune {
     res := &str[*pos]
     *pos++
     return res
-}
-
-func peek(str []rune, pos int) rune {
-    if pos < len(str) {
-        return str[pos]
-    }
-    return rune(0) // '\0'
 }
 
 func isAtEnd(bytes []rune, pos int) bool {
