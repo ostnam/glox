@@ -5,6 +5,7 @@ import (
     "unicode"
 
     "github.com/ostnam/glox/pkg/utils"
+    . "github.com/ostnam/glox/pkg/tokens"
 )
 
 func Scan(input []rune) ([]Token, []error) {
@@ -12,7 +13,7 @@ func Scan(input []rune) ([]Token, []error) {
     lineNumber := 0
     toks := make([]Token, 0)
     errs := []error{}
-    for !isAtEnd(input, pos) {
+    for !utils.IsAtEnd(input, pos) {
         tok, err := scanToken(input, &pos, &lineNumber);
         if err != nil {
             errs = append(errs, err)
@@ -24,10 +25,10 @@ func Scan(input []rune) ([]Token, []error) {
     toks = append(
         toks,
         Token {
-            type_: EOF,
-            lexeme: "",
-            literal: "",
-            line: 0,
+            Type: EOF,
+            Lexeme: "",
+            Literal: "",
+            Line: 0,
         },
     )
     return toks, errs
@@ -35,7 +36,7 @@ func Scan(input []rune) ([]Token, []error) {
 
 func scanToken(str []rune, pos *int, lineNumber *int) (*Token, error) {
     start := *pos
-    c := advance(str, pos);
+    c := utils.Advance(str, pos);
     if c == nil {
         return nil, nil
     }
@@ -131,7 +132,7 @@ func scanToken(str []rune, pos *int, lineNumber *int) (*Token, error) {
 func scanStrLiteral(str []rune, pos *int, start int, line *int) (*Token, error) {
     initialLine := *line
     for {
-        char := advance(str, pos)
+        char := utils.Advance(str, pos)
         if char == nil {
             break
         }
@@ -147,14 +148,14 @@ func scanStrLiteral(str []rune, pos *int, start int, line *int) (*Token, error) 
 }
 
 func scanNumLiteral(str []rune, pos *int, start int, line *int) (*Token, error) {
-    for !isAtEnd(str, *pos) {
+    for !utils.IsAtEnd(str, *pos) {
         c := utils.Peek(str, *pos)
         if c == nil {
             break
         }
         switch *c {
         case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
-            char := advance(str, pos)
+            char := utils.Advance(str, pos)
             if char == nil {
                 break
             }
@@ -165,7 +166,7 @@ func scanNumLiteral(str []rune, pos *int, start int, line *int) (*Token, error) 
             }
             switch *c {
             case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
-                char :=  advance(str, pos)
+                char :=  utils.Advance(str, pos)
                 if char == nil {
                     break
                 }
@@ -176,9 +177,9 @@ func scanNumLiteral(str []rune, pos *int, start int, line *int) (*Token, error) 
 }
 
 func scanIdentifier(str []rune, pos *int, start int, line *int) (*Token, error) {
-    current := advance(str, pos)
+    current := utils.Advance(str, pos)
     for current != nil && (unicode.IsLetter(*current) || unicode.IsDigit(*current)) {
-        current = advance(str, pos)
+        current = utils.Advance(str, pos)
     }
 
     tok, identifierIsKeyword := keywords[string(str[start+1:*pos-1])]
@@ -192,10 +193,10 @@ func scanIdentifier(str []rune, pos *int, start int, line *int) (*Token, error) 
 func mkToken(type_ TokType, str []rune, start int, pos int, line int) *Token {
     lexeme := string(str[start:pos])
     return &Token {
-        type_: type_,
-        lexeme: lexeme,
-        literal: lexeme,
-        line: line,
+        Type: type_,
+        Lexeme: lexeme,
+        Literal: lexeme,
+        Line: line,
     }
 }
 
@@ -212,19 +213,6 @@ func getLineNum(str []rune, pos int) int {
     return line
 }
 
-func advance(str []rune, pos *int) *rune {
-    if *pos >= len(str) {
-        return nil
-    }
-    res := &str[*pos]
-    *pos++
-    return res
-}
-
-func isAtEnd(bytes []rune, pos int) bool {
-    return pos >= len(bytes)
-}
-
 func consumeRestOfLine(str []rune, pos *int) {
     for ; *pos < len(str); *pos++ {
         if str[*pos] == '\n' {
@@ -233,61 +221,6 @@ func consumeRestOfLine(str []rune, pos *int) {
         }
     }
 }
-
-type Token struct {
-    type_ TokType
-    lexeme string
-    literal string
-    line int
-}
-
-type TokType int8
-
-const (
-    // single char tokens
-    LeftParen TokType = iota
-    RightParen
-    LeftBrace
-    RightBrace
-    Comma
-    Dot
-    Minus
-    Plus
-    Semicolon
-    Slash
-    Star
-    // 1 or 2 char tokens
-    Bang
-    BangEql
-    Eql
-    EqlEql
-    Greater
-    GreaterEql
-    Less
-    LessEql
-    // literals
-    Identifier
-    Str
-    Num
-    // keywords
-    And
-    Class
-    Else
-    False
-    Fun
-    For
-    If
-    Nil
-    Or
-    Print
-    Return
-    Super
-    This
-    True
-    Var
-    While
-    EOF
-)
 
 var keywords = map[string]TokType {
     "and": And,
