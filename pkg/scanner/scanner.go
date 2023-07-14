@@ -185,11 +185,12 @@ func scanIdentifier(str []rune, pos *int, start int, line *int) (*Token, error) 
         current = utils.Advance(str, pos)
     }
 
-    tok, identifierIsKeyword := keywords[string(str[start+1:*pos-1])]
+    identifier := string(str[start:*pos])
+    tok, identifierIsKeyword := keywords[identifier]
     if identifierIsKeyword {
-        return mkToken(tok, str, start, *pos, *line), nil
+        return mkToken(tok, []rune(identifier), start, *pos, *line), nil
     } else {
-        return mkToken(Identifier, str, start, *pos, *line), nil
+        return mkToken(Identifier, []rune(identifier), start, *pos, *line), nil
     }
 }
 
