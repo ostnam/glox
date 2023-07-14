@@ -9,11 +9,15 @@ import (
 	"github.com/ostnam/glox/pkg/utils"
 )
 
-func parse(tokens []Token) ([]ast.Ast, []error) {
+// Top-level parsing function
+func Parse(tokens []Token) ([]ast.Ast, []error) {
     pos := 0
     res := []ast.Ast{}
     errs := []error{}
-    for !atEnd(tokens, pos) {
+    if tokens[len(tokens) - 1].Type == EOF {
+        tokens = tokens[:len(tokens) - 1]
+    }
+    for !utils.IsAtEnd(tokens, pos) {
         node, err := parseExpr(tokens, &pos)
         if node != nil {
             res = append(res, node)
@@ -151,7 +155,7 @@ func parsePrimary(tokens []Token, pos *int) (ast.Ast, error) {
     if utils.MatchTokenType(tokens, pos, Str) {
         return ast.Str {Val: utils.Previous(tokens, *pos).Literal}, nil
     }
-    if utils.MatchTokenType(tokens, pos, Str) {
+    if utils.MatchTokenType(tokens, pos, Num) {
         prev := utils.Previous(tokens, *pos).Literal
         val, err := strconv.ParseInt(prev, 10, 64)
         if err != nil {
@@ -174,4 +178,19 @@ func parsePrimary(tokens []Token, pos *int) (ast.Ast, error) {
         return ast.Grouping { Expr: expr }, nil
     }
     return nil, fmt.Errorf("Error parsing primary value")
+}
+
+// Advances the parsing state until the probable beginning of the next
+// statement, or the end of the token stream.
+func synchronize(tokens []Token, pos *int) {
+    utils.Advance(tokens, pos)
+    for !utils.IsAtEnd(tokens, *pos) {
+        if utils.Previous(tokens, *pos).Type == Semicolon {
+            return
+        }
+        if utils.PeekMatchesTokType(tokens, *pos, Class, Fun, For, If, While, Print, Return) {
+            return
+        }
+        utils.Advance(tokens, pos)
+    }
 }

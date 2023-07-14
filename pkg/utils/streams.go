@@ -8,7 +8,7 @@ func Peek[T any](str []T, pos int) *T {
     if pos < len(str) {
         return &str[pos]
     }
-    return nil // '\0'
+    return nil
 }
 
 func Previous[T any](str []T, pos int) *T {
@@ -49,4 +49,17 @@ func MatchTokenType(slice []tokens.Token, pos *int, vals ...tokens.TokType) bool
     }
     return Match(newVals, pos, vals...)
 
+}
+
+func PeekMatchesTokType(slice []tokens.Token, pos int, vals ...tokens.TokType) bool {
+    peeked := Peek(slice, pos)
+    if peeked == nil {
+        return false
+    }
+    for _, val := range vals {
+        if val == peeked.Type {
+            return true
+        }
+    }
+    return false
 }

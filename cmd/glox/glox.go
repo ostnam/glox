@@ -4,6 +4,9 @@ import (
     "bufio"
     "fmt"
     "os"
+
+    "github.com/ostnam/glox/pkg/ast"
+    "github.com/ostnam/glox/pkg/parser"
     "github.com/ostnam/glox/pkg/scanner"
 )
 
@@ -35,11 +38,21 @@ func run(input []byte) {
     if len(errs) > 0 {
         for _, err := range errs {
             fmt.Println(err)
+            return
         }
-    } else {
-        for _, tok := range toks {
-            fmt.Println(tok)
+    }
+    for _, tok := range toks {
+        fmt.Println(tok)
+    }
+    exprs, errs := parser.Parse(toks)
+    if len(errs) > 0 {
+        for _, err := range errs {
+            fmt.Println(err)
+            return
         }
+    }
+    for _, node := range exprs {
+        ast.PrettyPrintAst(node)
     }
 }
 

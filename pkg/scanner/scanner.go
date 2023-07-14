@@ -148,6 +148,7 @@ func scanStrLiteral(str []rune, pos *int, start int, line *int) (*Token, error) 
 }
 
 func scanNumLiteral(str []rune, pos *int, start int, line *int) (*Token, error) {
+    loop:
     for !utils.IsAtEnd(str, *pos) {
         c := utils.Peek(str, *pos)
         if c == nil {
@@ -157,7 +158,7 @@ func scanNumLiteral(str []rune, pos *int, start int, line *int) (*Token, error) 
         case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
             char := utils.Advance(str, pos)
             if char == nil {
-                break
+                break loop
             }
         case '.':
             c := utils.Peek(str, *pos+1)
@@ -168,9 +169,11 @@ func scanNumLiteral(str []rune, pos *int, start int, line *int) (*Token, error) 
             case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
                 char :=  utils.Advance(str, pos)
                 if char == nil {
-                    break
+                    break loop
                 }
             }
+        default:
+            break loop
         }
     }
     return mkToken(Num, str, start, *pos, *line), nil
