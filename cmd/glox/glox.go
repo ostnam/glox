@@ -1,75 +1,77 @@
 package main
 
 import (
-    "bufio"
-    "fmt"
-    "os"
+	"bufio"
+	"fmt"
+	"os"
 
-    "github.com/ostnam/glox/pkg/ast"
-    "github.com/ostnam/glox/pkg/parser"
-    "github.com/ostnam/glox/pkg/scanner"
+	"github.com/ostnam/glox/pkg/ast"
+	"github.com/ostnam/glox/pkg/parser"
+	"github.com/ostnam/glox/pkg/scanner"
 )
 
+// Run the file at the given path as a lox program.
 func runFile(path string) error {
-    content, err := os.ReadFile(path)
-    if err != nil {
-        return err
-    }
-    run(content)
-    return nil
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	run(content)
+	return nil
 }
 
+// Runs the REPL
 func runRepl() {
-    scanner := bufio.NewScanner(os.Stdin)
-    for {
-        fmt.Print("> ")
-        eof := scanner.Scan()
-        if !eof { // on ctrl-D, err is EOF
-            fmt.Print("\n")
-            return
-        }
-        run(scanner.Bytes())
-    }
+	scanner := bufio.NewScanner(os.Stdin)
+	for {
+		fmt.Print("> ")
+		eof := scanner.Scan()
+		if !eof { // on ctrl-D, err is EOF
+			fmt.Print("\n")
+			return
+		}
+		run(scanner.Bytes())
+	}
 }
 
+// Evaluates the slice of bytes passed as input.
 func run(input []byte) {
-    runes := []rune(string(input[:]))
-    toks, errs := scanner.Scan(runes)
-    if len(errs) > 0 {
-        for _, err := range errs {
-            fmt.Println(err)
-            return
-        }
-    }
-    for _, tok := range toks {
-        fmt.Println(tok)
-    }
-    exprs, errs := parser.Parse(toks)
-    if len(errs) > 0 {
-        for _, err := range errs {
-            fmt.Println(err)
-            return
-        }
-    }
-    for _, node := range exprs {
-        ast.PrettyPrintAst(node)
-    }
+	runes := []rune(string(input))
+	toks, errs := scanner.Scan(runes)
+	if len(errs) > 0 {
+		for _, err := range errs {
+			fmt.Println(err)
+			return
+		}
+	}
+	for _, tok := range toks {
+		fmt.Println(tok)
+	}
+	exprs, errs := parser.Parse(toks)
+	if len(errs) > 0 {
+		for _, err := range errs {
+			fmt.Println(err)
+			return
+		}
+	}
+	for _, node := range exprs {
+		ast.PrettyPrintAst(node)
+	}
 }
-
 
 func printErr(line int, where string, msg string) {
-    fmt.Printf("Line %d, at \"%s\": %s", line, where, msg)
+	fmt.Printf("Line %d, at \"%s\": %s", line, where, msg)
 }
 
 func main() {
-    args := os.Args[1:]
-    n_args := len(args)
-    if n_args > 1 {
-        fmt.Println("usage: glox SOURCE_FILE_PATH")
-        os.Exit(64)
-    } else if n_args == 1 {
-        runFile(args[0])
-    } else {
-        runRepl()
-    }
+	args := os.Args[1:]
+	n_args := len(args)
+	if n_args > 1 {
+		fmt.Println("usage: glox SOURCE_FILE_PATH")
+		os.Exit(64)
+	} else if n_args == 1 {
+		runFile(args[0])
+	} else {
+		runRepl()
+	}
 }
