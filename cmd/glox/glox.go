@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/ostnam/glox/pkg/ast"
+	"github.com/ostnam/glox/pkg/eval"
 	"github.com/ostnam/glox/pkg/parser"
 	"github.com/ostnam/glox/pkg/scanner"
 )
@@ -16,7 +17,7 @@ func runFile(path string) error {
 	if err != nil {
 		return err
 	}
-	run(content)
+	run(content, true)
 	return nil
 }
 
@@ -30,33 +31,53 @@ func runRepl() {
 			fmt.Print("\n")
 			return
 		}
-		run(scanner.Bytes())
+		run(scanner.Bytes(), true)
 	}
 }
 
 // Evaluates the slice of bytes passed as input.
-func run(input []byte) {
+// Return value is whether the evaluation returned successfully.
+func run(input []byte, debug bool) bool {
 	runes := []rune(string(input))
 	toks, errs := scanner.Scan(runes)
 	if len(errs) > 0 {
 		for _, err := range errs {
 			fmt.Println(err)
-			return
+			return false
 		}
 	}
-	for _, tok := range toks {
-		fmt.Println(tok)
-	}
+    if debug {
+        fmt.Println("Tokens scanned:")
+        for _, tok := range toks {
+            fmt.Printf("  %#v\n", tok)
+        }
+    }
+
 	exprs, errs := parser.Parse(toks)
 	if len(errs) > 0 {
 		for _, err := range errs {
 			fmt.Println(err)
-			return
+			return false
 		}
 	}
-	for _, node := range exprs {
-		ast.PrettyPrintAst(node)
-	}
+    if debug {
+        fmt.Println("\nAST parsed:")
+        for _, node := range exprs {
+            ast.PrettyPrintAst(node)
+        }
+    }
+
+    for _, expr := range exprs {
+        val, err := eval.Eval(expr)
+        if err != nil {
+            fmt.Println(err)
+            return false
+        }
+        if debug {
+            fmt.Printf("%#v\n", val)
+        }
+    }
+    return true
 }
 
 func printErr(line int, where string, msg string) {
