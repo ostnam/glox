@@ -52,8 +52,8 @@ func (self BinaryOperator) String() string {
 	return []string{"Eql", "NotEql", "Minus", "Plus", "Mult", "Div", "Greater", "GreaterEql", "Less", "LessEql"}[self]
 }
 
-type Int struct {
-	Val int64
+type Num struct {
+	Val float64
 }
 
 type Str struct {
@@ -113,9 +113,9 @@ func prettyPrintAst(node Ast, indent int) {
 		node := node.(Unop)
 		fmt.Printf("Unop: %s\n", node.Op)
 		prettyPrintAst(node.Val, indent+INDENT_LVL)
-	case Int:
-		node := node.(Int)
-		fmt.Printf("Int %d", node.Val)
+	case Num:
+		node := node.(Num)
+		fmt.Printf("Num %f", node.Val)
 	case Str:
 		node := node.(Str)
 		fmt.Printf("Str: %s", node.Val)

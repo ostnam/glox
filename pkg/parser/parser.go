@@ -160,11 +160,11 @@ func parsePrimary(tokens []Token, pos *int) (ast.Ast, error) {
 	}
 	if utils.MatchTokenType(tokens, pos, Num) {
 		prev := utils.Previous(tokens, *pos).Literal
-		val, err := strconv.ParseInt(prev, 10, 64)
+		val, err := strconv.ParseFloat(prev, 64)
 		if err != nil {
 			return nil, fmt.Errorf("BUG: Internal parse error, couldn't parse int from int literal: %s", prev)
 		}
-		return ast.Int{Val: val}, nil
+		return ast.Num{Val: val}, nil
 	}
 	if utils.MatchTokenType(tokens, pos, LeftParen) {
 		expr, err := parseExpr(tokens, pos)
