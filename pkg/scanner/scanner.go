@@ -196,13 +196,13 @@ loop:
 }
 
 func scanIdentifier(str []rune, pos *int, start int, line *int) (*Token, error) {
-    for {
-        next := utils.Peek(str, *pos)
-        if next == nil || !(unicode.IsLetter(*next) || unicode.IsDigit(*next)) {
-            break
-        }
-        utils.Advance(str, pos)
-    }
+	for {
+		next := utils.Peek(str, *pos)
+		if next == nil || !(unicode.IsLetter(*next) || unicode.IsDigit(*next)) {
+			break
+		}
+		utils.Advance(str, pos)
+	}
 	identifier := string(str[start:*pos])
 	tok, identifierIsKeyword := keywords[identifier]
 	if identifierIsKeyword {
@@ -213,7 +213,7 @@ func scanIdentifier(str []rune, pos *int, start int, line *int) (*Token, error) 
 }
 
 func mkToken(type_ TokType, str []rune, start int, pos int, line int) *Token {
-    lexeme := string(str[start:pos])
+	lexeme := string(str[start:pos])
 	return &Token{
 		Type:    type_,
 		Lexeme:  lexeme,

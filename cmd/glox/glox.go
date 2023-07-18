@@ -46,12 +46,12 @@ func run(input []byte, debug bool) bool {
 			return false
 		}
 	}
-    if debug {
-        fmt.Println("Tokens scanned:")
-        for _, tok := range toks {
-            fmt.Printf("  %#v\n", tok)
-        }
-    }
+	if debug {
+		fmt.Println("Tokens scanned:")
+		for _, tok := range toks {
+			fmt.Printf("  %#v\n", tok)
+		}
+	}
 
 	exprs, errs := parser.Parse(toks)
 	if len(errs) > 0 {
@@ -60,25 +60,25 @@ func run(input []byte, debug bool) bool {
 			return false
 		}
 	}
-    if debug {
-        fmt.Println("\nAST parsed:")
-        for _, node := range exprs {
-            ast.PrettyPrintAst(node)
-        }
-    }
+	if debug {
+		fmt.Println("\nAST parsed:")
+		for _, node := range exprs {
+			ast.PrettyPrintAst(node)
+		}
+	}
 
-    state := eval.NewEnv()
-    for _, expr := range exprs {
-        val, err := state.Eval(expr)
-        if err != nil {
-            fmt.Println(err)
-            return false
-        }
-        if debug {
-            fmt.Printf("%#v\n", val)
-        }
-    }
-    return true
+	state := eval.NewEnv()
+	for _, expr := range exprs {
+		val, err := state.Eval(expr)
+		if err != nil {
+			fmt.Println(err)
+			return false
+		}
+		if debug {
+			fmt.Printf("%#v\n", val)
+		}
+	}
+	return true
 }
 
 func printErr(line int, where string, msg string) {
