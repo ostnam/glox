@@ -8,7 +8,7 @@ import (
 )
 
 // Interface of every Ast node type
-type Ast interface{}
+type Ast interface{} 
 
 // Ast node for unary operations
 type Unop struct {
@@ -71,6 +71,40 @@ type Grouping struct {
 	Expr Ast
 }
 
+type Stmt struct {
+    Kind StmtKind
+    Expr Ast
+}
+
+type StmtKind int8 
+
+const (
+    ExprStmt StmtKind = iota
+    PrintStmt
+)
+
+type Identifier struct {
+    Name string
+}
+
+type VarDecl struct {
+    Name Identifier
+}
+
+type VarInit struct {
+    Name Identifier
+    Val Ast
+}
+
+type Assignment struct {
+    Name Identifier
+    Val Ast
+}
+
+type Block struct {
+    Statements []Ast
+}
+
 // Maps tokens to their corresponding BinaryOperator if such a mapping exists.
 var TokToBinop = map[tokens.TokType]BinaryOperator{
 	tokens.EqlEql:     Eql,
@@ -104,6 +138,17 @@ func prettyPrintAst(node Ast, indent int) {
 		fmt.Print(strings.Repeat(" ", indent-1) + "|" + " ")
 	}
 	switch t := node.(type) {
+    case Stmt:
+		node := node.(Stmt)
+        fmt.Printf("Stmt: %v, Expr: ", node.Kind)
+        prettyPrintAst(node.Expr, indent)
+    case VarDecl:
+        node := node.(VarDecl)
+        fmt.Printf("Variable declaration: %v", node.Name.Name)
+    case VarInit:
+        node := node.(VarInit)
+        fmt.Printf("Initializing %v to the value of:\n", node.Name)
+		prettyPrintAst(node.Val, indent+INDENT_LVL)
 	case Binop:
 		node := node.(Binop)
 		fmt.Printf("Binop: %s\n", node.Op)
@@ -128,8 +173,22 @@ func prettyPrintAst(node Ast, indent int) {
 		node := node.(Grouping)
 		fmt.Printf("Grouping\n")
 		prettyPrintAst(node.Expr, indent+INDENT_LVL)
+    case Identifier:
+        node := node.(Identifier)
+        fmt.Printf("Identifier: %s", node.Name)
+    case Assignment:
+        node := node.(Assignment)
+        fmt.Printf("Assigning to the name %s the value:\n", node.Name.Name)
+        prettyPrintAst(node.Val, indent+INDENT_LVL)
+    case Block:
+        node := node.(Block)
+        fmt.Printf("Block, with expressions:\n")
+        for _, stmt := range node.Statements {
+            prettyPrintAst(stmt, indent+INDENT_LVL)
+        }
+
 	default:
 		fmt.Printf("Error pretty-printing AST, unknown node type: %s", t)
 	}
-	fmt.Print("\n")
+    fmt.Print("\n")
 }

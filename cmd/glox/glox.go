@@ -67,8 +67,9 @@ func run(input []byte, debug bool) bool {
         }
     }
 
+    state := eval.NewEnv()
     for _, expr := range exprs {
-        val, err := eval.Eval(expr)
+        val, err := state.Eval(expr)
         if err != nil {
             fmt.Println(err)
             return false

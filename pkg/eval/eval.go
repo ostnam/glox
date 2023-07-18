@@ -8,7 +8,10 @@ import (
     "github.com/ostnam/glox/pkg/tokens"
 )
 
-type evalState struct {}
+type Env struct {
+    Parent *Env
+    Globals map[string]ast.Ast
+}
 
 type RunTimeError struct {
     Kind RunTimeErrorKind
@@ -26,15 +29,92 @@ const (
     TypeError RunTimeErrorKind = iota
 )
 
-func Eval(node ast.Ast) (ast.Ast, error) {
+func NewEnv() Env {
+    return Env {
+        Parent: nil,
+        Globals: map[string]ast.Ast{},
+    }
+}
+
+func (env *Env) newChildren() Env {
+    return Env {
+        Parent: env,
+        Globals: map[string]ast.Ast{},
+    }
+}
+
+func (env *Env) Eval(node ast.Ast) (ast.Ast, error) {
 	switch t := node.(type) {
-	case ast.Binop:
-		node := node.(ast.Binop)
-        evald_lhs, err := Eval(node.Lhs)
+    case ast.Block:
+        node := node.(ast.Block)
+        new_env := env.newChildren()
+        for _, stmt := range node.Statements {
+            _, err := new_env.Eval(stmt)
+            if err != nil {
+                return nil, err
+            }
+        }
+        return ast.Nil{}, nil
+
+    case ast.VarDecl:
+        node := node.(ast.VarDecl)
+        env.setVariable(node.Name.Name, ast.Nil{})
+        return nil, nil
+
+    case ast.VarInit:
+        node := node.(ast.VarInit)
+        evald, err := env.Eval(node.Val)
         if err != nil {
             return nil, err
         }
-        evald_rhs, err := Eval(node.Rhs)
+        env.setVariable(node.Name.Name, evald)
+        return nil, nil
+
+    case ast.Assignment:
+        node := node.(ast.Assignment)
+        evald, err := env.Eval(node.Val)
+        if err != nil {
+            return nil, err
+        }
+        _, ok := env.Globals[node.Name.Name]
+        if !ok {
+            return nil, fmt.Errorf("Assigning value to undefined variable %s", node.Name.Name)
+        }
+        env.Globals[node.Name.Name] = evald
+        return evald, nil
+
+    case ast.Identifier:
+        node := node.(ast.Identifier)
+        val, ok := env.Globals[node.Name]
+        if !ok {
+            return nil, fmt.Errorf("Variable %s is undefined", node.Name)
+        }
+        return val, nil
+
+    case ast.Stmt:
+		node := node.(ast.Stmt)
+        switch node.Kind {
+        case ast.ExprStmt:
+            _, err := env.Eval(node.Expr)
+            return ast.Nil{}, err
+        case ast.PrintStmt:
+            evald, err := env.Eval(node.Expr)
+            if err != nil {
+                return nil, err
+            }
+            fmt.Print(evald)
+            return ast.Nil{}, nil
+        default: 
+        return nil, fmt.Errorf("Unhandled statement kind: %v", node.Kind)
+        }
+
+	case ast.Binop:
+		node := node.(ast.Binop)
+        evald_lhs, err := env.Eval(node.Lhs)
+        if err != nil {
+            return nil, err
+        }
+        evald_rhs, err := env.Eval(node.Rhs)
         if err != nil {
             return nil, err
         }
@@ -104,7 +184,7 @@ func Eval(node ast.Ast) (ast.Ast, error) {
 
 	case ast.Unop:
 		node := node.(ast.Unop)
-        evald, err := Eval(node.Val)
+        evald, err := env.Eval(node.Val)
         if err != nil {
             return nil, err
         }
@@ -129,11 +209,40 @@ func Eval(node ast.Ast) (ast.Ast, error) {
 
 	case ast.Grouping:
 		node := node.(ast.Grouping)
-        return Eval(node.Expr)
+        return env.Eval(node.Expr)
 
 	default:
         return nil, fmt.Errorf("BUG: unmatched AST node type during evaluation: %T", t)
 	}
+}
+
+func (env *Env) setVariable(name string, val ast.Ast) {
+    env.Globals[name] = val
+}
+
+func (env Env) readVariable(name string) ast.Ast {
+    val, ok := env.Globals["name"]
+    if ok {
+        return val
+    }
+    if env.Parent == nil {
+        return nil
+    }
+    return env.Parent.readVariable(name)
+}
+
+// Only updates a pre-existing variable. Return whether it was successful,
+// ie updating a non-existing variable returns false.
+func (env Env) updateVariable(name string, val ast.Ast) bool {
+    _, ok := env.Globals["name"]
+    if ok {
+        env.Globals["name"] = val
+        return true
+    }
+    if env.Parent == nil {
+        return false
+    }
+    return env.Parent.updateVariable(name, val)
 }
 
 func isTruthy(val ast.Ast) bool {
