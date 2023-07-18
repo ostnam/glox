@@ -29,6 +29,7 @@ func Advance[T any](str []T, pos *int) *T {
 	return res
 }
 
+// Whether the last value has already been consuemed.
 func IsAtEnd[T any](bytes []T, pos int) bool {
 	return pos >= len(bytes)
 }
