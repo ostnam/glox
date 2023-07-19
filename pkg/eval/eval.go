@@ -45,23 +45,23 @@ func (env *Env) newChildren() Env {
 
 func (env *Env) Eval(node ast.Ast) (ast.Ast, error) {
 	switch t := node.(type) {
-    case ast.IfStmt:
+	case ast.IfStmt:
 		node := node.(ast.IfStmt)
-        evaldPred, err := env.Eval(node.Pred)
-        if err != nil {
-            return nil, err
-        }
-        if isTruthy(evaldPred) {
-            _, err := env.Eval(node.Body)
-            if err != nil {
-                return nil, err
-            }
-        } else if node.Else != nil {
-            _, err := env.Eval(node.Else)
-            if err != nil {
-                return nil, err
-            }
-        }
+		evaldPred, err := env.Eval(node.Pred)
+		if err != nil {
+			return nil, err
+		}
+		if isTruthy(evaldPred) {
+			_, err := env.Eval(node.Body)
+			if err != nil {
+				return nil, err
+			}
+		} else if node.Else != nil {
+			_, err := env.Eval(node.Else)
+			if err != nil {
+				return nil, err
+			}
+		}
 		return ast.Nil{}, nil
 
 	case ast.Block:
@@ -95,17 +95,16 @@ func (env *Env) Eval(node ast.Ast) (ast.Ast, error) {
 		if err != nil {
 			return nil, err
 		}
-		_, ok := env.Globals[node.Name.Name]
+		ok := env.updateVariable(node.Name.Name, evald)
 		if !ok {
-			return nil, fmt.Errorf("Assigning value to undefined variable %s", node.Name.Name)
+			return nil, fmt.Errorf("Error setting value %v to variable %s", evald, node.Name.Name)
 		}
-		env.Globals[node.Name.Name] = evald
 		return evald, nil
 
 	case ast.Identifier:
 		node := node.(ast.Identifier)
-		val, ok := env.Globals[node.Name]
-		if !ok {
+		val := env.readVariable(node.Name)
+		if val == nil {
 			return nil, fmt.Errorf("Variable %s is undefined", node.Name)
 		}
 		return val, nil
@@ -201,28 +200,44 @@ func (env *Env) Eval(node ast.Ast) (ast.Ast, error) {
 			return nil, fmt.Errorf("Unimplemented binary operator: %s", node.Op)
 		}
 
-    case ast.Or:
-        node := node.(ast.Or)
-        lhs, err := env.Eval(node.Lhs)
-        if err != nil {
-            return nil, err
-        }
-        if isTruthy(lhs) {
-            return lhs, nil
-        }
-        return env.Eval(node.Rhs)
+	case ast.Or:
+		node := node.(ast.Or)
+		lhs, err := env.Eval(node.Lhs)
+		if err != nil {
+			return nil, err
+		}
+		if isTruthy(lhs) {
+			return lhs, nil
+		}
+		return env.Eval(node.Rhs)
 
-    case ast.And:
-        node := node.(ast.And)
-        lhs, err := env.Eval(node.Lhs)
-        if err != nil {
-            return nil, err
-        }
-        if !isTruthy(lhs) {
-            return lhs, nil
-        }
-        return env.Eval(node.Rhs)
+	case ast.And:
+		node := node.(ast.And)
+		lhs, err := env.Eval(node.Lhs)
+		if err != nil {
+			return nil, err
+		}
+		if !isTruthy(lhs) {
+			return lhs, nil
+		}
+		return env.Eval(node.Rhs)
 
+	case ast.While:
+		node := node.(ast.While)
+		for {
+			val, err := env.Eval(node.Pred)
+			if err != nil {
+				return nil, err
+			}
+			if !isTruthy(val) {
+				break
+			}
+			_, err = env.Eval(node.Body)
+			if err != nil {
+				return nil, err
+			}
+		}
+		return ast.Nil{}, nil
 
 	case ast.Unop:
 		node := node.(ast.Unop)
@@ -263,7 +278,7 @@ func (env *Env) setVariable(name string, val ast.Ast) {
 }
 
 func (env Env) readVariable(name string) ast.Ast {
-	val, ok := env.Globals["name"]
+	val, ok := env.Globals[name]
 	if ok {
 		return val
 	}
@@ -276,9 +291,9 @@ func (env Env) readVariable(name string) ast.Ast {
 // Only updates a pre-existing variable. Return whether it was successful,
 // ie updating a non-existing variable returns false.
 func (env Env) updateVariable(name string, val ast.Ast) bool {
-	_, ok := env.Globals["name"]
+	_, ok := env.Globals[name]
 	if ok {
-		env.Globals["name"] = val
+		env.Globals[name] = val
 		return true
 	}
 	if env.Parent == nil {
