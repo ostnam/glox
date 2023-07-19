@@ -112,6 +112,22 @@ type Block struct {
 	Statements []Ast
 }
 
+type IfStmt struct {
+    Pred Ast
+    Body Ast
+    Else Ast
+}
+
+type Or struct {
+    Lhs Ast
+    Rhs Ast
+}
+
+type And struct {
+    Lhs Ast
+    Rhs Ast
+}
+
 // Maps tokens to their corresponding BinaryOperator if such a mapping exists.
 var TokToBinop = map[tokens.TokType]BinaryOperator{
 	tokens.EqlEql:     Eql,
@@ -193,6 +209,28 @@ func prettyPrintAst(node Ast, indent int) {
 		for _, stmt := range node.Statements {
 			prettyPrintAst(stmt, indent+INDENT_LVL)
 		}
+    case IfStmt:
+        node := node.(IfStmt)
+        fmt.Printf("If statement, with predicate:\n")
+        prettyPrintAst(node.Pred, indent+INDENT_LVL)
+        fmt.Printf("Body:\n")
+        prettyPrintAst(node.Body, indent+INDENT_LVL)
+        if node.Else != nil {
+            fmt.Printf("Else case:\n")
+            prettyPrintAst(node.Else, indent+INDENT_LVL)
+        }
+
+    case Or:
+        node := node.(Or)
+        fmt.Printf("OR:\n")
+        prettyPrintAst(node.Lhs, indent+INDENT_LVL)
+        prettyPrintAst(node.Rhs, indent+INDENT_LVL)
+
+    case And:
+        node := node.(And)
+        fmt.Printf("OR:\n")
+        prettyPrintAst(node.Lhs, indent+INDENT_LVL)
+        prettyPrintAst(node.Rhs, indent+INDENT_LVL)
 
 	default:
 		fmt.Printf("Error pretty-printing AST, unknown node type: %s", t)

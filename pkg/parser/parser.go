@@ -90,10 +90,44 @@ func parseStatement(tokens []Token, pos *int) (ast.Ast, error) {
 	if next.Type == Print {
 		return parsePrintStatement(tokens, pos)
 	} else if next.Type == LeftBrace {
-		return parseBlock(tokens, pos)
-	} else {
+        return parseBlock(tokens, pos)
+	} else if next.Type == If {
+        return parseIfStatement(tokens, pos)
+    } else {
 		return parseExprStatement(tokens, pos)
 	}
+}
+
+// Tries to parse an if statement, consuming tokens if failing.
+func parseIfStatement(tokens []Token, pos *int) (ast.Ast, error) {
+    fst := utils.Advance(tokens, pos)
+    if fst == nil || fst.Type != If {
+        return nil, errors.New("If statement parsing error.")
+    }
+    open := utils.Advance(tokens, pos)
+    if open == nil || open.Type != LeftParen {
+        return nil, errors.New("Error parsing if statement")
+    }
+    pred, err := parseExpr(tokens, pos)
+    if err != nil {
+        return nil, err
+    }
+    closing := utils.Advance(tokens, pos)
+    if closing == nil || closing.Type != RightParen {
+        return nil, errors.New("Error parsing if statement")
+    }
+    body, err := parseStatement(tokens, pos)
+    if err != nil {
+        return nil, err
+    }
+    if utils.MatchTokenType(tokens, pos, Else) {
+        elseStmt, err := parseStatement(tokens, pos)
+        if err != nil {
+            return nil, err
+        }
+        return ast.IfStmt { Pred: pred, Body: body, Else: elseStmt }, nil
+    }
+    return ast.IfStmt { Pred: pred, Body: body, Else: nil}, nil
 }
 
 func parsePrintStatement(tokens []Token, pos *int) (ast.Ast, error) {
@@ -151,7 +185,7 @@ func parseExpr(tokens []Token, pos *int) (ast.Ast, error) {
 }
 
 func parseAssignment(tokens []Token, pos *int) (ast.Ast, error) {
-	expr, err := parseEquality(tokens, pos)
+	expr, err := parseLogicOr(tokens, pos)
 	if err != nil {
 		return nil, err
 	}
@@ -170,6 +204,38 @@ func parseAssignment(tokens []Token, pos *int) (ast.Ast, error) {
 		}, nil
 	}
 	return expr, nil
+}
+
+func parseLogicOr(tokens []Token, pos *int) (ast.Ast, error) {
+    expr, err := parseLogicAnd(tokens, pos)
+    if err != nil {
+        return nil, err
+    }
+    for utils.MatchTokenType(tokens, pos, Or) {
+        rhs, err := parseLogicAnd(tokens, pos)
+        if err != nil {
+            return nil, err
+        }
+        expr = ast.Or{Lhs: expr, Rhs: rhs }
+    }
+
+    return expr, nil
+}
+
+func parseLogicAnd(tokens []Token, pos *int) (ast.Ast, error) {
+    expr, err := parseEquality(tokens, pos)
+    if err != nil {
+        return nil, err
+    }
+    for utils.MatchTokenType(tokens, pos, And) {
+        rhs, err := parseEquality(tokens, pos)
+        if err != nil {
+            return nil, err
+        }
+        expr = ast.And{ Lhs: expr, Rhs: rhs }
+    }
+
+    return expr, nil
 }
 
 func parseEquality(tokens []Token, pos *int) (ast.Ast, error) {

@@ -45,6 +45,25 @@ func (env *Env) newChildren() Env {
 
 func (env *Env) Eval(node ast.Ast) (ast.Ast, error) {
 	switch t := node.(type) {
+    case ast.IfStmt:
+		node := node.(ast.IfStmt)
+        evaldPred, err := env.Eval(node.Pred)
+        if err != nil {
+            return nil, err
+        }
+        if isTruthy(evaldPred) {
+            _, err := env.Eval(node.Body)
+            if err != nil {
+                return nil, err
+            }
+        } else if node.Else != nil {
+            _, err := env.Eval(node.Else)
+            if err != nil {
+                return nil, err
+            }
+        }
+		return ast.Nil{}, nil
+
 	case ast.Block:
 		node := node.(ast.Block)
 		new_env := env.newChildren()
@@ -181,6 +200,29 @@ func (env *Env) Eval(node ast.Ast) (ast.Ast, error) {
 		default:
 			return nil, fmt.Errorf("Unimplemented binary operator: %s", node.Op)
 		}
+
+    case ast.Or:
+        node := node.(ast.Or)
+        lhs, err := env.Eval(node.Lhs)
+        if err != nil {
+            return nil, err
+        }
+        if isTruthy(lhs) {
+            return lhs, nil
+        }
+        return env.Eval(node.Rhs)
+
+    case ast.And:
+        node := node.(ast.And)
+        lhs, err := env.Eval(node.Lhs)
+        if err != nil {
+            return nil, err
+        }
+        if !isTruthy(lhs) {
+            return lhs, nil
+        }
+        return env.Eval(node.Rhs)
+
 
 	case ast.Unop:
 		node := node.(ast.Unop)
