@@ -27,6 +27,7 @@ func (self UnaryOperator) String() string {
 	return []string{"Not", "Neg"}[self]
 }
 
+// Ast node for binary operations
 type Binop struct {
 	Op  BinaryOperator
 	Lhs Ast
@@ -52,25 +53,31 @@ func (self BinaryOperator) String() string {
 	return []string{"Eql", "NotEql", "Minus", "Plus", "Mult", "Div", "Greater", "GreaterEql", "Less", "LessEql"}[self]
 }
 
+// AST node for numeric value
 type Num struct {
 	Val float64
 }
 
+// AST node for strings
 type Str struct {
 	Val string
 }
 
+// AST node for bools
 type Bool struct {
 	Val bool
 }
 
+// AST node for the lox nil
 type Nil struct {
 }
 
+// AST node for expressions between parens
 type Grouping struct {
 	Expr Ast
 }
 
+// AST node for statements
 type Stmt struct {
 	Kind StmtKind
 	Expr Ast
