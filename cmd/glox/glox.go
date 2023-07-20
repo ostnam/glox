@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/ostnam/glox/pkg/ast"
 	"github.com/ostnam/glox/pkg/eval"
 	"github.com/ostnam/glox/pkg/parser"
 	"github.com/ostnam/glox/pkg/scanner"
@@ -63,13 +62,13 @@ func run(input []byte, debug bool) bool {
 	if debug {
 		fmt.Println("\nAST parsed:")
 		for _, node := range exprs {
-			ast.PrettyPrintAst(node)
+			eval.PrettyPrintAst(node)
 		}
 	}
 
-	state := eval.NewEnv()
+	interpreter := eval.NewInterpreter()
 	for _, expr := range exprs {
-		val, err := state.Eval(expr)
+		val, err := interpreter.Eval(expr)
 		if err != nil {
 			fmt.Println(err)
 			return false

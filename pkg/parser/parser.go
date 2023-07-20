@@ -5,16 +5,16 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/ostnam/glox/pkg/ast"
+	"github.com/ostnam/glox/pkg/eval"
 	. "github.com/ostnam/glox/pkg/tokens"
 	"github.com/ostnam/glox/pkg/utils"
 )
 
 // Top-level parsing function.
 // Values in the returned slices are never nil.
-func Parse(tokens []Token) ([]ast.Ast, []error) {
+func Parse(tokens []Token) ([]eval.Ast, []error) {
 	pos := 0           // index of the next token to parse
-	res := []ast.Ast{} // every AST node parsed
+	res := []eval.Ast{} // every AST node parsed
 	errs := []error{}  // every error collected
 	// main parsing loop
 	for !utils.IsAtEnd(tokens, pos) && !utils.PeekMatchesTokType(tokens, pos, EOF) {
@@ -29,7 +29,7 @@ func Parse(tokens []Token) ([]ast.Ast, []error) {
 	return res, errs
 }
 
-func parseDeclaration(tokens []Token, pos *int) (ast.Ast, error) {
+func parseDeclaration(tokens []Token, pos *int) (eval.Ast, error) {
 	next := utils.Peek(tokens, *pos)
 	if next == nil {
 		return nil, errors.New("Couldn't parse declaration")
@@ -37,11 +37,15 @@ func parseDeclaration(tokens []Token, pos *int) (ast.Ast, error) {
 	if next.Type == Var {
 		return parseVarDecl(tokens, pos)
 	}
+	if next.Type == Fun {
+        utils.Advance(tokens, pos)
+		return parseFunDecl(tokens, pos)
+	}
 	return parseStatement(tokens, pos)
 }
 
 // Parsed a variable declaration of the form var x; or var x = 10;
-func parseVarDecl(tokens []Token, pos *int) (ast.Ast, error) {
+func parseVarDecl(tokens []Token, pos *int) (eval.Ast, error) {
 	fst := utils.Advance(tokens, pos)
 	if fst == nil {
 		return nil, errors.New("Couldn't parse variable declaration")
@@ -58,8 +62,8 @@ func parseVarDecl(tokens []Token, pos *int) (ast.Ast, error) {
 	}
 
 	if utils.MatchTokenType(tokens, pos, Semicolon) {
-		return ast.VarDecl{
-			Name: ast.Identifier{Name: name.Literal},
+		return eval.VarDecl{
+			Name: eval.Identifier{Name: name.Literal},
 		}, nil
 	}
 
@@ -74,15 +78,63 @@ func parseVarDecl(tokens []Token, pos *int) (ast.Ast, error) {
 		return nil, err
 	}
 	if utils.MatchTokenType(tokens, pos, Semicolon) {
-		return ast.VarInit{
-			Name: ast.Identifier{Name: name.Literal},
+		return eval.VarInit{
+			Name: eval.Identifier{Name: name.Literal},
 			Val:  expr,
 		}, nil
 	}
 	return nil, fmt.Errorf("Syntax error: initialization of variable doesn't end with a ;")
 }
 
-func parseStatement(tokens []Token, pos *int) (ast.Ast, error) {
+// The "fun" keyword should have been matched before this function is called.
+func parseFunDecl(tokens []Token, pos *int) (eval.Ast, error) {
+    name := utils.Advance(tokens, pos)
+    if name == nil || name.Type != Identifier {
+        return nil, fmt.Errorf("Error parsing name of function declaration.")
+    }
+    if !utils.MatchTokenType(tokens, pos, LeftParen) {
+        return nil, fmt.Errorf("Function named %s not followed by (.", name.Lexeme)
+    }
+    params, err := parseParams(tokens, pos)
+    if err != nil {
+        return nil, err
+    }
+    if len(params) >= 255 {
+        return nil, fmt.Errorf("Tried to define a function named %s which takes %d parameters, which is over the limit of 254", name.Lexeme, len(params))
+    }
+
+    if !utils.MatchTokenType(tokens, pos, RightParen) {
+        return nil, fmt.Errorf("Function named %s param list not followed by ).", name.Lexeme)
+    }
+    body, err := parseBlock(tokens, pos)
+    if err != nil {
+        return nil, err
+    }
+    return eval.FnDecl {
+        Fn: eval.Fn {
+            Name: name.Lexeme,
+            Params: params,
+            Body: body,
+            Closure: nil,
+        },
+    }, nil
+}
+
+func parseParams(tokens []Token, pos *int) ([]string, error) {
+    res := []string{}
+    for utils.PeekMatchesTokType(tokens, *pos, Identifier) {
+        res = append(res, utils.Advance(tokens, pos).Lexeme)
+        if utils.PeekMatchesTokType(tokens, *pos, RightParen) {
+            break
+        }
+        if !utils.MatchTokenType(tokens, pos, Comma) {
+            return nil, fmt.Errorf("Error parsing parameters of function, expected a comma after argument but got %v", utils.Peek(tokens, *pos))
+        }
+    }
+    return res, nil
+}
+
+func parseStatement(tokens []Token, pos *int) (eval.Ast, error) {
 	next := utils.Peek(tokens, *pos)
 	if next == nil {
 		return nil, errors.New("Couldn't parse statement")
@@ -97,12 +149,32 @@ func parseStatement(tokens []Token, pos *int) (ast.Ast, error) {
 		return parseWhileStatement(tokens, pos)
 	} else if next.Type == For {
 		return parseForStatement(tokens, pos)
+	} else if next.Type == Return {
+        return parseReturnStatement(tokens, pos)
 	} else {
 		return parseExprStatement(tokens, pos)
 	}
 }
 
-func parseForStatement(tokens []Token, pos *int) (ast.Ast, error) {
+func parseReturnStatement(tokens []Token, pos *int) (eval.Ast, error) {
+	fst := utils.Advance(tokens, pos)
+	if fst == nil || fst.Type != Return {
+		return nil, errors.New("Return statement parsing error.")
+	}
+    if utils.MatchTokenType(tokens, pos, Semicolon) {
+        return eval.ReturnStmt{Val: nil}, nil
+    }
+    expr, err := parseExpr(tokens, pos)
+    if err != nil {
+        return nil, err
+    }
+    if !utils.MatchTokenType(tokens, pos, Semicolon) {
+        return nil, fmt.Errorf("Error parsing return statement: doesn't end with a semicolon")
+    }
+    return eval.ReturnStmt{Val: expr}, nil
+}
+
+func parseForStatement(tokens []Token, pos *int) (eval.Ast, error) {
 	fst := utils.Advance(tokens, pos)
 	if fst == nil || fst.Type != For {
 		return nil, errors.New("For statement parsing error.")
@@ -111,7 +183,7 @@ func parseForStatement(tokens []Token, pos *int) (ast.Ast, error) {
 	if open == nil || open.Type != LeftParen {
 		return nil, errors.New("Error parsing for statement")
 	}
-	var init ast.Ast = nil
+	var init eval.Ast = nil
 	if utils.PeekMatchesTokType(tokens, *pos, Var) {
 		val, err := parseVarDecl(tokens, pos)
 		if err != nil {
@@ -131,7 +203,7 @@ func parseForStatement(tokens []Token, pos *int) (ast.Ast, error) {
 		}
 	}
 
-	var cond ast.Ast = nil
+	var cond eval.Ast = nil
 	if !utils.PeekMatchesTokType(tokens, *pos, Semicolon) {
 		val, err := parseExpr(tokens, pos)
 		if err != nil {
@@ -143,7 +215,7 @@ func parseForStatement(tokens []Token, pos *int) (ast.Ast, error) {
 		return nil, errors.New("No semicolon at the end of a for condition.")
 	}
 
-	var update ast.Ast = nil
+	var update eval.Ast = nil
 	if !utils.PeekMatchesTokType(tokens, *pos, RightParen) {
 		val, err := parseExpr(tokens, pos)
 		if err != nil {
@@ -160,28 +232,28 @@ func parseForStatement(tokens []Token, pos *int) (ast.Ast, error) {
 		return nil, err
 	}
 
-	body := ast.Block{
-		Statements: []ast.Ast{stmt},
+	body := eval.Block{
+		Statements: []eval.Ast{stmt},
 	}
 	if update != nil {
-		body.Statements = append(body.Statements, ast.Stmt{Kind: ast.ExprStmt, Expr: update})
+		body.Statements = append(body.Statements, eval.Stmt{Kind: eval.ExprStmt, Expr: update})
 	}
-	while := ast.While{
-		Pred: ast.Bool{Val: true},
+	while := eval.While{
+		Pred: eval.Bool{Val: true},
 		Body: body,
 	}
 	if cond != nil {
 		while.Pred = cond
 	}
 	if init != nil {
-		return ast.Block{
-			Statements: []ast.Ast{init, while},
+		return eval.Block{
+			Statements: []eval.Ast{init, while},
 		}, nil
 	}
 	return while, nil
 }
 
-func parseWhileStatement(tokens []Token, pos *int) (ast.Ast, error) {
+func parseWhileStatement(tokens []Token, pos *int) (eval.Ast, error) {
 	fst := utils.Advance(tokens, pos)
 	if fst == nil || fst.Type != While {
 		return nil, errors.New("While statement parsing error.")
@@ -202,11 +274,11 @@ func parseWhileStatement(tokens []Token, pos *int) (ast.Ast, error) {
 	if err != nil {
 		return nil, err
 	}
-	return ast.While{Pred: pred, Body: body}, nil
+	return eval.While{Pred: pred, Body: body}, nil
 }
 
 // Tries to parse an if statement, consuming tokens if failing.
-func parseIfStatement(tokens []Token, pos *int) (ast.Ast, error) {
+func parseIfStatement(tokens []Token, pos *int) (eval.Ast, error) {
 	fst := utils.Advance(tokens, pos)
 	if fst == nil || fst.Type != If {
 		return nil, errors.New("If statement parsing error.")
@@ -232,12 +304,12 @@ func parseIfStatement(tokens []Token, pos *int) (ast.Ast, error) {
 		if err != nil {
 			return nil, err
 		}
-		return ast.IfStmt{Pred: pred, Body: body, Else: elseStmt}, nil
+		return eval.IfStmt{Pred: pred, Body: body, Else: elseStmt}, nil
 	}
-	return ast.IfStmt{Pred: pred, Body: body, Else: nil}, nil
+	return eval.IfStmt{Pred: pred, Body: body, Else: nil}, nil
 }
 
-func parsePrintStatement(tokens []Token, pos *int) (ast.Ast, error) {
+func parsePrintStatement(tokens []Token, pos *int) (eval.Ast, error) {
 	first := utils.Advance(tokens, pos)
 	if first.Type != Print {
 		return nil, fmt.Errorf("Error parsing print expression, first token %v isn't print.", first)
@@ -250,15 +322,15 @@ func parsePrintStatement(tokens []Token, pos *int) (ast.Ast, error) {
 	if last.Type != Semicolon {
 		return nil, fmt.Errorf("Print statement doesn't end with a semicolon, but with the following token: %#v", last)
 	}
-	return ast.Stmt{Kind: ast.PrintStmt, Expr: expr}, nil
+	return eval.Stmt{Kind: eval.PrintStmt, Expr: expr}, nil
 }
 
-func parseBlock(tokens []Token, pos *int) (ast.Ast, error) {
+func parseBlock(tokens []Token, pos *int) (eval.Ast, error) {
 	fst := utils.Advance(tokens, pos)
 	if fst == nil {
 		return nil, errors.New("Couldn't parse a block's beginning brace.")
 	}
-	body := []ast.Ast{}
+	body := []eval.Ast{}
 	next := utils.Peek(tokens, *pos)
 	for !utils.IsAtEnd(tokens, *pos) && next != nil && next.Type != RightBrace {
 		decl, err := parseDeclaration(tokens, pos)
@@ -272,10 +344,10 @@ func parseBlock(tokens []Token, pos *int) (ast.Ast, error) {
 	if !ok {
 		return nil, fmt.Errorf("Block doesn't end with a }")
 	}
-	return ast.Block{Statements: body}, nil
+	return eval.Block{Statements: body}, nil
 }
 
-func parseExprStatement(tokens []Token, pos *int) (ast.Ast, error) {
+func parseExprStatement(tokens []Token, pos *int) (eval.Ast, error) {
 	expr, err := parseExpr(tokens, pos)
 	if err != nil {
 		return nil, err
@@ -284,14 +356,14 @@ func parseExprStatement(tokens []Token, pos *int) (ast.Ast, error) {
 	if last.Type != Semicolon {
 		return nil, fmt.Errorf("Expression statement doesn't end with a semicolon, but with the following token: %v", last)
 	}
-	return ast.Stmt{Kind: ast.ExprStmt, Expr: expr}, nil
+	return eval.Stmt{Kind: eval.ExprStmt, Expr: expr}, nil
 }
 
-func parseExpr(tokens []Token, pos *int) (ast.Ast, error) {
+func parseExpr(tokens []Token, pos *int) (eval.Ast, error) {
 	return parseAssignment(tokens, pos)
 }
 
-func parseAssignment(tokens []Token, pos *int) (ast.Ast, error) {
+func parseAssignment(tokens []Token, pos *int) (eval.Ast, error) {
 	expr, err := parseLogicOr(tokens, pos)
 	if err != nil {
 		return nil, err
@@ -301,11 +373,11 @@ func parseAssignment(tokens []Token, pos *int) (ast.Ast, error) {
 		if err != nil {
 			return nil, err
 		}
-		lhs, ok := expr.(ast.Identifier)
+		lhs, ok := expr.(eval.Identifier)
 		if !ok {
 			return nil, fmt.Errorf("Incorrect left hand side of assignment: %v", lhs)
 		}
-		return ast.Assignment{
+		return eval.Assignment{
 			Name: lhs,
 			Val:  rhs,
 		}, nil
@@ -313,7 +385,7 @@ func parseAssignment(tokens []Token, pos *int) (ast.Ast, error) {
 	return expr, nil
 }
 
-func parseLogicOr(tokens []Token, pos *int) (ast.Ast, error) {
+func parseLogicOr(tokens []Token, pos *int) (eval.Ast, error) {
 	expr, err := parseLogicAnd(tokens, pos)
 	if err != nil {
 		return nil, err
@@ -323,13 +395,13 @@ func parseLogicOr(tokens []Token, pos *int) (ast.Ast, error) {
 		if err != nil {
 			return nil, err
 		}
-		expr = ast.Or{Lhs: expr, Rhs: rhs}
+		expr = eval.Or{Lhs: expr, Rhs: rhs}
 	}
 
 	return expr, nil
 }
 
-func parseLogicAnd(tokens []Token, pos *int) (ast.Ast, error) {
+func parseLogicAnd(tokens []Token, pos *int) (eval.Ast, error) {
 	expr, err := parseEquality(tokens, pos)
 	if err != nil {
 		return nil, err
@@ -339,13 +411,13 @@ func parseLogicAnd(tokens []Token, pos *int) (ast.Ast, error) {
 		if err != nil {
 			return nil, err
 		}
-		expr = ast.And{Lhs: expr, Rhs: rhs}
+		expr = eval.And{Lhs: expr, Rhs: rhs}
 	}
 
 	return expr, nil
 }
 
-func parseEquality(tokens []Token, pos *int) (ast.Ast, error) {
+func parseEquality(tokens []Token, pos *int) (eval.Ast, error) {
 	expr, err := parseComparison(tokens, pos)
 	if err != nil {
 		return nil, err
@@ -359,8 +431,8 @@ func parseEquality(tokens []Token, pos *int) (ast.Ast, error) {
 		if err != nil {
 			return nil, err
 		}
-		expr = ast.Binop{
-			Op:  ast.TokToBinop[op.Type],
+		expr = eval.Binop{
+			Op:  eval.TokToBinop[op.Type],
 			Lhs: expr,
 			Rhs: right,
 		}
@@ -368,7 +440,7 @@ func parseEquality(tokens []Token, pos *int) (ast.Ast, error) {
 	return expr, nil
 }
 
-func parseComparison(tokens []Token, pos *int) (ast.Ast, error) {
+func parseComparison(tokens []Token, pos *int) (eval.Ast, error) {
 	expr, err := parseTerm(tokens, pos)
 	if err != nil {
 		return nil, err
@@ -382,8 +454,8 @@ func parseComparison(tokens []Token, pos *int) (ast.Ast, error) {
 		if err != nil {
 			return nil, err
 		}
-		expr = ast.Binop{
-			Op:  ast.TokToBinop[op.Type],
+		expr = eval.Binop{
+			Op:  eval.TokToBinop[op.Type],
 			Lhs: expr,
 			Rhs: right,
 		}
@@ -391,7 +463,7 @@ func parseComparison(tokens []Token, pos *int) (ast.Ast, error) {
 	return expr, nil
 }
 
-func parseTerm(tokens []Token, pos *int) (ast.Ast, error) {
+func parseTerm(tokens []Token, pos *int) (eval.Ast, error) {
 	expr, err := parseFactor(tokens, pos)
 	if err != nil {
 		return nil, err
@@ -405,8 +477,8 @@ func parseTerm(tokens []Token, pos *int) (ast.Ast, error) {
 		if err != nil {
 			return nil, err
 		}
-		expr = ast.Binop{
-			Op:  ast.TokToBinop[op.Type],
+		expr = eval.Binop{
+			Op:  eval.TokToBinop[op.Type],
 			Lhs: expr,
 			Rhs: right,
 		}
@@ -414,7 +486,7 @@ func parseTerm(tokens []Token, pos *int) (ast.Ast, error) {
 	return expr, nil
 }
 
-func parseFactor(tokens []Token, pos *int) (ast.Ast, error) {
+func parseFactor(tokens []Token, pos *int) (eval.Ast, error) {
 	expr, err := parseUnary(tokens, pos)
 	if err != nil {
 		return nil, err
@@ -428,8 +500,8 @@ func parseFactor(tokens []Token, pos *int) (ast.Ast, error) {
 		if err != nil {
 			return nil, err
 		}
-		expr = ast.Binop{
-			Op:  ast.TokToBinop[op.Type],
+		expr = eval.Binop{
+			Op:  eval.TokToBinop[op.Type],
 			Lhs: expr,
 			Rhs: right,
 		}
@@ -437,34 +509,77 @@ func parseFactor(tokens []Token, pos *int) (ast.Ast, error) {
 	return expr, nil
 }
 
-func parseUnary(tokens []Token, pos *int) (ast.Ast, error) {
+func parseUnary(tokens []Token, pos *int) (eval.Ast, error) {
 	for utils.MatchTokenType(tokens, pos, Bang, Minus) {
 		op := utils.Previous(tokens, *pos)
 		val, err := parseUnary(tokens, pos)
 		if err != nil {
 			return nil, err
 		}
-		expr := ast.Unop{
-			Op:  ast.TokToUnop[op.Type],
+		expr := eval.Unop{
+			Op:  eval.TokToUnop[op.Type],
 			Val: val,
 		}
 		return expr, nil
 	}
-	return parsePrimary(tokens, pos)
+	return parseFnCall(tokens, pos)
 }
 
-func parsePrimary(tokens []Token, pos *int) (ast.Ast, error) {
+func parseFnCall(tokens []Token, pos *int) (eval.Ast, error) {
+    var maxNumArgsExceeded error = nil
+    expr, err := parsePrimary(tokens, pos)
+    if err != nil {
+        return nil, err
+    }
+	for utils.MatchTokenType(tokens, pos, LeftParen) {
+        args := []eval.Ast{}
+        if !utils.PeekMatchesTokType(tokens, *pos, RightParen) {
+            args, err = parseArgumentList(tokens, pos)
+            if err != nil {
+                return nil, err
+            }
+            if len(args) >= 255 {
+                maxNumArgsExceeded = fmt.Errorf("Exceeded the maximum (254) number of arguments passed to a function")
+            }
+        }
+        expr = eval.FnCall { Fn: expr, Args: args}
+        if !utils.MatchTokenType(tokens, pos, RightParen) {
+            return nil, errors.New("Error parsing function call")
+        }
+	}
+    return expr, maxNumArgsExceeded
+}
+
+// Returns an error if the argument list is empty
+func parseArgumentList(tokens []Token, pos *int) ([]eval.Ast, error) {
+    res := []eval.Ast{}
+    fst, err := parseExpr(tokens, pos)
+    if err != nil {
+        return nil, err
+    }
+    res = append(res, fst)
+    for utils.MatchTokenType(tokens, pos, Comma) {
+        expr, err := parseExpr(tokens, pos)
+        if err != nil {
+            return nil, err
+        }
+        res = append(res, expr)
+    }
+    return res, nil
+}
+
+func parsePrimary(tokens []Token, pos *int) (eval.Ast, error) {
 	if utils.MatchTokenType(tokens, pos, False) {
-		return ast.Bool{Val: false}, nil
+		return eval.Bool{Val: false}, nil
 	}
 	if utils.MatchTokenType(tokens, pos, True) {
-		return ast.Bool{Val: true}, nil
+		return eval.Bool{Val: true}, nil
 	}
 	if utils.MatchTokenType(tokens, pos, Nil) {
-		return ast.Nil{}, nil
+		return eval.Nil{}, nil
 	}
 	if utils.MatchTokenType(tokens, pos, Str) {
-		return ast.Str{Val: utils.Previous(tokens, *pos).Literal}, nil
+		return eval.Str{Val: utils.Previous(tokens, *pos).Literal}, nil
 	}
 	if utils.MatchTokenType(tokens, pos, Num) {
 		prev := utils.Previous(tokens, *pos).Literal
@@ -472,7 +587,7 @@ func parsePrimary(tokens []Token, pos *int) (ast.Ast, error) {
 		if err != nil {
 			return nil, fmt.Errorf("BUG: Internal parse error, couldn't parse int from int literal: %s", prev)
 		}
-		return ast.Num{Val: val}, nil
+		return eval.Num{Val: val}, nil
 	}
 	if utils.MatchTokenType(tokens, pos, LeftParen) {
 		expr, err := parseExpr(tokens, pos)
@@ -486,11 +601,11 @@ func parsePrimary(tokens []Token, pos *int) (ast.Ast, error) {
 		if next.Type != RightParen {
 			return nil, fmt.Errorf("Unclosed parentheses")
 		}
-		return ast.Grouping{Expr: expr}, nil
+		return eval.Grouping{Expr: expr}, nil
 	}
 	if utils.MatchTokenType(tokens, pos, Identifier) {
 		prev := utils.Previous(tokens, *pos)
-		return ast.Identifier{Name: prev.Literal}, nil
+		return eval.Identifier{Name: prev.Literal}, nil
 	}
 	// This is the bottom of the parser, if we reach this line, nothing has
 	// matched. To avoid going into an endless loop, we synchronize, otherwise
