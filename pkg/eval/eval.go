@@ -3,54 +3,54 @@ package eval
 import (
 	"fmt"
 	"reflect"
-    "time"
+	"time"
 
 	"github.com/ostnam/glox/pkg/tokens"
 )
 
 type Env struct {
-	Parent  *Env
-	Store map[string]Ast
+	Parent *Env
+	Store  map[string]Ast
 }
 
 type Interpreter struct {
-    globals *Env
-    currentEnv *Env
+	globals    *Env
+	currentEnv *Env
 }
 
 func NewInterpreter() Interpreter {
-    globals := newGlobals()
-    return Interpreter{globals: &globals, currentEnv: &globals}
+	globals := newGlobals()
+	return Interpreter{globals: &globals, currentEnv: &globals}
 }
 
 func newEnv() Env {
 	return Env{
-		Parent:  nil,
-		Store: map[string]Ast{},
+		Parent: nil,
+		Store:  map[string]Ast{},
 	}
 }
 
 func newGlobals() Env {
-    store := map[string]Ast{}
-    store["clock"] = BuiltinFn{
-        CallFn: func(val []Ast) (Ast, error) {
-            return Num {
-                Val: float64(time.Now().UnixMilli()),
-            }, nil
-        },
-        ArityVal: 0,
-    }
+	store := map[string]Ast{}
+	store["clock"] = BuiltinFn{
+		CallFn: func(val []Ast) (Ast, error) {
+			return Num{
+				Val: float64(time.Now().UnixMilli()),
+			}, nil
+		},
+		ArityVal: 0,
+	}
 
-    return Env {
-        Parent: nil,
-        Store: store,
-    }
+	return Env{
+		Parent: nil,
+		Store:  store,
+	}
 }
 
 func (env *Env) newChildren() Env {
 	return Env{
-		Parent:  env,
-		Store: map[string]Ast{},
+		Parent: env,
+		Store:  map[string]Ast{},
 	}
 }
 
@@ -59,82 +59,107 @@ func (env *Env) setVariable(name string, val Ast) {
 }
 
 func (self Interpreter) newFnScope(params []string, args []Ast, closure *Env) Interpreter {
-    env := newEnv()
-    env.Parent = closure
-    for i := 0; i < len(params); i++ {
-        env.setVariable(params[i], args[i])
-    }
-    return Interpreter {
-        globals: self.globals,
-        currentEnv: &env,
-    }
+	env := newEnv()
+	env.Parent = closure
+	for i := 0; i < len(params); i++ {
+		env.setVariable(params[i], args[i])
+	}
+	return Interpreter{
+		globals:    self.globals,
+		currentEnv: &env,
+	}
 }
 
-func (env Env) readVariable(name string) Ast {
-	val, ok := env.Store[name]
-	if ok {
-		return val
+func (self Interpreter) readVariable(id Identifier) (Ast, error) {
+	if id.Depth == -1 {
+		val, ok := self.globals.Store[id.Name]
+		if !ok {
+			return nil, fmt.Errorf("Tried to read undefined global variable %s", id.Name)
+		}
+		return val, nil
 	}
-	if env.Parent == nil {
-		return nil
+	return self.currentEnv.readVariable(id)
+}
+
+func (env Env) readVariable(name Identifier) (Ast, error) {
+	ancestor, err := env.ancestor(name.Depth)
+	if err != nil {
+		return nil, err
 	}
-	return env.Parent.readVariable(name)
+	val, ok := ancestor.Store[name.Name]
+	if !ok {
+		return nil, fmt.Errorf("Tried to read undefined variable named %s", name.Name)
+	}
+	return val, nil
 }
 
 // Only updates a pre-existing variable. Return whether it was successful,
 // ie updating a non-existing variable returns false.
-func (env Env) updateVariable(name string, val Ast) bool {
-	_, ok := env.Store[name]
-	if ok {
-		env.Store[name] = val
-		return true
+// Value must have already been evaluated.
+func (interpreter *Interpreter) updateVariable(id Identifier, val Ast) error {
+	if id.Depth == -1 {
+		interpreter.globals.Store[id.Name] = val
 	}
-	if env.Parent == nil {
-		return false
+	env, err := interpreter.currentEnv.ancestor(id.Depth)
+	if err != nil {
+		return err
 	}
-	return env.Parent.updateVariable(name, val)
+	env.Store[id.Name] = val
+	return nil
+}
+
+// Pointer won't be nil if err isn't nil.
+func (env Env) ancestor(dist int) (*Env, error) {
+	current := &env
+	for i := 0; i < dist; i++ {
+		if current.Parent == nil {
+			return nil, fmt.Errorf("INTERNAL BUG: Error getting ancestor of environment, requested ancestor at depth %d but no parent after ancestor at depth %d", dist, i)
+		}
+		current = current.Parent
+	}
+	return current, nil
 }
 
 func (self *Interpreter) Eval(node Ast) (Ast, error) {
 	switch t := node.(type) {
-    case ReturnStmt:
-        node := node.(ReturnStmt)
-        evald, err := self.Eval(node.Val)
-        if err != nil {
-            return nil, err
-        }
-        return ReturnStmt{Val: evald}, nil
+	case ReturnStmt:
+		node := node.(ReturnStmt)
+		evald, err := self.Eval(node.Val)
+		if err != nil {
+			return nil, err
+		}
+		return ReturnStmt{Val: evald}, nil
 
-    case FnCall:
-        node := node.(FnCall)
-        fn, err := self.Eval(node.Fn)
-        if err != nil {
-            return nil, err
-        }
-        callable, ok := fn.(Callable)
-        if !ok {
-            return nil, fmt.Errorf("Called function on non-callable AST node: %v", fn)
-        }
-        if len(node.Args) != callable.Arity() {
-            return nil, fmt.Errorf("Function %v called with incorrect number of arguments, expected: %d, got %d", callable, len(node.Args), callable.Arity())
-        }
-        args := []Ast{}
-        for _, expr := range(node.Args) {
-            evald, err := self.Eval(expr)
-            if err != nil {
-                return nil, err
-            }
-            args = append(args, evald)
-        }
-        return callable.Call(args, *self)
+	case FnCall:
+		node := node.(FnCall)
+		fn, err := self.Eval(node.Fn)
+		if err != nil {
+			return nil, err
+		}
+		callable, ok := fn.(Callable)
+		if !ok {
+			return nil, fmt.Errorf("Called function on non-callable AST node: %v", fn)
+		}
+		if len(node.Args) != callable.Arity() {
+			return nil, fmt.Errorf("Function %v called with incorrect number of arguments, expected: %d, got %d", callable, len(node.Args), callable.Arity())
+		}
+		args := []Ast{}
+		for _, expr := range node.Args {
+			evald, err := self.Eval(expr)
+			if err != nil {
+				return nil, err
+			}
+			args = append(args, evald)
+		}
+		return callable.Call(args, *self)
 
-    case Fn:
-        return node, nil
+	case Fn:
+		return node, nil
 
-    case FnDecl:
-        node := node.(FnDecl)
-        self.currentEnv.setVariable(node.Name, node.asFn(self.currentEnv))
-        return Nil{}, nil
+	case FnDecl:
+		node := node.(FnDecl)
+		self.currentEnv.setVariable(node.Name, node.asFn(self.currentEnv))
+		return Nil{}, nil
 
 	case IfStmt:
 		node := node.(IfStmt)
@@ -147,38 +172,38 @@ func (self *Interpreter) Eval(node Ast) (Ast, error) {
 			if err != nil {
 				return nil, err
 			}
-            ret, isRet := val.(ReturnStmt)
-            if isRet {
-                return ret, nil
-            }
+			ret, isRet := val.(ReturnStmt)
+			if isRet {
+				return ret, nil
+			}
 		} else if node.Else != nil {
 			val, err := self.Eval(node.Else)
 			if err != nil {
 				return nil, err
 			}
-            ret, isRet := val.(ReturnStmt)
-            if isRet {
-                return ret, nil
-            }
+			ret, isRet := val.(ReturnStmt)
+			if isRet {
+				return ret, nil
+			}
 		}
 		return Nil{}, nil
 
 	case Block:
 		node := node.(Block)
-        old_env := self.currentEnv
-        children_env := self.currentEnv.newChildren()
-        self.currentEnv = &children_env
+		old_env := self.currentEnv
+		children_env := self.currentEnv.newChildren()
+		self.currentEnv = &children_env
 		for _, stmt := range node.Statements {
 			val, err := self.Eval(stmt)
 			if err != nil {
 				return nil, err
 			}
-            ret, isRet := val.(ReturnStmt)
-            if isRet {
-                return ret, nil
-            }
+			ret, isRet := val.(ReturnStmt)
+			if isRet {
+				return ret, nil
+			}
 		}
-        self.currentEnv = old_env
+		self.currentEnv = old_env
 		return Nil{}, nil
 
 	case VarDecl:
@@ -201,18 +226,18 @@ func (self *Interpreter) Eval(node Ast) (Ast, error) {
 		if err != nil {
 			return nil, err
 		}
-		ok := self.currentEnv.updateVariable(node.Name.Name, evald)
-		if !ok {
-			return nil, fmt.Errorf("Error setting value %v to variable %s", evald, node.Name.Name)
+		err = self.updateVariable(node.Name, evald)
+		if err != nil {
+			return nil, err
 		}
 		return evald, nil
 
 	case Identifier:
 		node := node.(Identifier)
-		val := self.currentEnv.readVariable(node.Name)
-		if val == nil {
-            return nil, fmt.Errorf("Variable %s is undefined", node.Name)
-        }
+		val, err := self.readVariable(node)
+		if err != nil {
+			return nil, err
+		}
 		return val, nil
 
 	case Stmt:
@@ -342,10 +367,10 @@ func (self *Interpreter) Eval(node Ast) (Ast, error) {
 			if err != nil {
 				return nil, err
 			}
-            ret, isRet := val.(ReturnStmt)
-            if isRet {
-                return ret, nil
-            }
+			ret, isRet := val.(ReturnStmt)
+			if isRet {
+				return ret, nil
+			}
 		}
 		return Nil{}, nil
 
@@ -381,6 +406,9 @@ func (self *Interpreter) Eval(node Ast) (Ast, error) {
 	default:
 		return nil, fmt.Errorf("BUG: unmatched AST node type during evaluation: %T", t)
 	}
+}
+
+func (self *Interpreter) resolve(node Ast, depth int) {
 }
 
 func isTruthy(val Ast) bool {

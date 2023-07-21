@@ -66,8 +66,19 @@ func run(input []byte, debug bool) bool {
 		}
 	}
 
-	interpreter := eval.NewInterpreter()
+	resolver := eval.NewResolver()
+	resolved := []eval.Ast{}
 	for _, expr := range exprs {
+		val, err := resolver.Resolve(expr)
+		if err != nil {
+			fmt.Println(err)
+			return false
+		}
+		resolved = append(resolved, val)
+	}
+
+	interpreter := eval.NewInterpreter()
+	for _, expr := range resolved {
 		val, err := interpreter.Eval(expr)
 		if err != nil {
 			fmt.Println(err)
