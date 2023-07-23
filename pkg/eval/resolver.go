@@ -3,23 +3,82 @@ package eval
 import "fmt"
 
 type Resolver struct {
-	scopes    []map[string]bool
-	currentFn FnType
+	scopes       []map[string]bool
+	currentFn    FnType
+	currentClass ClassType
 }
 
-type FnType uint8
+type ClassType uint8
 
 const (
-	none FnType = iota
-	regular
+	none ClassType = iota
+	class
 )
 
 func NewResolver() Resolver {
-	return Resolver{scopes: []map[string]bool{}, currentFn: none}
+	return Resolver{scopes: []map[string]bool{}, currentFn: None}
 }
 
 func (res Resolver) Resolve(node Ast) (Ast, error) {
 	switch t := node.(type) {
+	case This:
+		if res.currentClass == none {
+			return nil, fmt.Errorf("Used this outside of class declaration.")
+		}
+		node := node.(This)
+		return res.resolveThis(node), nil
+
+	case Set:
+		node := node.(Set)
+		newLhs, err := res.Resolve(node.Lhs)
+		if err != nil {
+			return nil, err
+		}
+		node.Lhs = newLhs
+		newVal, err := res.Resolve(node.Val)
+		if err != nil {
+			return nil, err
+		}
+		node.Val = newVal
+		return node, nil
+
+	case Get:
+		node := node.(Get)
+		newLhs, err := res.Resolve(node.Lhs)
+		if err != nil {
+			return nil, err
+		}
+		node.Lhs = newLhs
+		return node, nil
+
+	case ClassDecl:
+		node := node.(ClassDecl)
+		prevClass := res.currentClass
+		res.currentClass = class
+		res.declare(node.Name)
+		res.define(node.Name)
+		res.beginScope()
+		res.scopes[len(res.scopes)-1]["this"] = true
+		newMethods := []Fn{}
+		for _, method := range node.Methods {
+			if method.Name == "init" {
+				method.Type = Ctor
+			} else {
+				method.Type = Method
+			}
+			method, err := res.Resolve(method)
+			if err != nil {
+				return nil, err
+			}
+			fn := method.(Fn)
+			newMethods = append(newMethods, fn)
+		}
+		node.Methods = newMethods
+		res.endScope()
+		res.currentClass = prevClass
+
+		return node, nil
+
 	case VarInit:
 		node := node.(VarInit)
 		err := res.declare(node.Name.Name)
@@ -67,7 +126,7 @@ func (res Resolver) Resolve(node Ast) (Ast, error) {
 			return nil, err
 		}
 		res.define(node.Name)
-		asFn, err := res.Resolve(node.asFn(nil))
+		asFn, err := res.Resolve(node.AsFn(nil))
 		return FnDecl{Fn: asFn.(Fn)}, err
 
 	case Fn:
@@ -81,7 +140,7 @@ func (res Resolver) Resolve(node Ast) (Ast, error) {
 			res.define(param)
 		}
 		old_fn := res.currentFn
-		res.currentFn = regular
+		res.currentFn = Regular
 		newBody, err := res.Resolve(node.Body)
 		node.Body = newBody
 		res.currentFn = old_fn
@@ -134,8 +193,11 @@ func (res Resolver) Resolve(node Ast) (Ast, error) {
 
 	case ReturnStmt:
 		node := node.(ReturnStmt)
-		if res.currentFn == none {
+		if res.currentFn == None {
 			return nil, fmt.Errorf("Used return outside of a function body.")
+		}
+		if res.currentFn == Ctor {
+			return nil, fmt.Errorf("Used return inside a constructor.")
 		}
 		newVal, err := res.Resolve(node.Val)
 		node.Val = newVal
@@ -268,4 +330,14 @@ func (res *Resolver) resolveLocal(node Identifier) Identifier {
 		}
 	}
 	return node
+}
+
+func (res *Resolver) resolveThis(this This) This {
+	for i := len(res.scopes) - 1; i >= 0; i-- {
+		_, ok := res.scopes[i]["this"]
+		if ok {
+			this.Depth = len(res.scopes) - 1 - i
+		}
+	}
+	return this
 }

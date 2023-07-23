@@ -93,6 +93,18 @@ func (env Env) readVariable(name Identifier) (Ast, error) {
 	return val, nil
 }
 
+func (env Env) getThis(this This) (Ast, error) {
+	ancestor, err := env.ancestor(this.Depth)
+	if err != nil {
+		return nil, err
+	}
+	val, ok := ancestor.Store["this"]
+	if !ok {
+		return nil, fmt.Errorf("Tried to read unset this.")
+	}
+	return val, nil
+}
+
 // Only updates a pre-existing variable. Return whether it was successful,
 // ie updating a non-existing variable returns false.
 // Value must have already been evaluated.
@@ -122,6 +134,56 @@ func (env Env) ancestor(dist int) (*Env, error) {
 
 func (self *Interpreter) Eval(node Ast) (Ast, error) {
 	switch t := node.(type) {
+	case This:
+		node := node.(This)
+		return self.currentEnv.getThis(node)
+
+	case Set:
+		node := node.(Set)
+		evald_lhs, err := self.Eval(node.Lhs)
+		if err != nil {
+			return nil, err
+		}
+		lhs_inst, ok := evald_lhs.(ClassInstance)
+		if !ok {
+			return nil, fmt.Errorf("Can't set field of non class instance")
+		}
+		evald, err := self.Eval(node.Val)
+		if err != nil {
+			return nil, err
+		}
+		lhs_inst.set(node.FieldName, evald)
+		return evald, nil
+
+	case Get:
+		node := node.(Get)
+		evald, err := self.Eval(node.Lhs)
+		if err != nil {
+			return nil, err
+		}
+		instance, ok := evald.(ClassInstance)
+		if !ok {
+			return nil, fmt.Errorf("Tried to access field of non-class instance.")
+		}
+		return instance.get(node.FieldName)
+
+	case ClassDecl:
+		node := node.(ClassDecl)
+		methods := map[string]Fn{}
+		for _, method := range node.Methods {
+			method.Closure = self.currentEnv
+			if method.Name == "init" {
+				method.IsCtor = true
+			}
+			methods[method.Name] = method
+		}
+		newClass := Class{
+			Name:    node.Name,
+			Methods: methods,
+		}
+		self.currentEnv.setVariable(node.Name, newClass)
+		return Nil{}, nil
+
 	case ReturnStmt:
 		node := node.(ReturnStmt)
 		evald, err := self.Eval(node.Val)
@@ -158,7 +220,7 @@ func (self *Interpreter) Eval(node Ast) (Ast, error) {
 
 	case FnDecl:
 		node := node.(FnDecl)
-		self.currentEnv.setVariable(node.Name, node.asFn(self.currentEnv))
+		self.currentEnv.setVariable(node.Name, node.AsFn(self.currentEnv))
 		return Nil{}, nil
 
 	case IfStmt:

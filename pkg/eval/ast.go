@@ -178,7 +178,18 @@ type Fn struct {
 	Params  []string
 	Body    Ast
 	Closure *Env
+	Type    FnType
+	IsCtor  bool
 }
+
+type FnType uint8
+
+const (
+	None FnType = iota
+	Regular
+	Method
+	Ctor
+)
 
 func (fn Fn) Call(args []Ast, interpreter Interpreter) (Ast, error) {
 	newInterpreter := interpreter.newFnScope(fn.Params, args, fn.Closure)
@@ -190,6 +201,9 @@ func (fn Fn) Call(args []Ast, interpreter Interpreter) (Ast, error) {
 	if isRet {
 		return ret.Val, nil
 	}
+	if fn.IsCtor {
+		return fn.Closure.getThis(This{Depth: 0})
+	}
 	return Nil{}, nil
 }
 
@@ -197,11 +211,18 @@ func (fn Fn) Arity() int {
 	return len(fn.Params)
 }
 
+func (fn Fn) bind(this *ClassInstance) Fn {
+	newEnv := fn.Closure.newChildren()
+	newEnv.Store["this"] = this
+	fn.Closure = &newEnv
+	return fn
+}
+
 type FnDecl struct {
 	Fn
 }
 
-func (fn FnDecl) asFn(env *Env) Fn {
+func (fn FnDecl) AsFn(env *Env) Fn {
 	return Fn{
 		Name:    fn.Name,
 		Params:  fn.Params,
@@ -212,6 +233,72 @@ func (fn FnDecl) asFn(env *Env) Fn {
 
 type ReturnStmt struct {
 	Val Ast
+}
+
+type ClassDecl struct {
+	Name    string
+	Methods []Fn
+}
+
+type Class struct {
+	Name    string
+	Methods map[string]Fn
+}
+
+// Calling a class == instantiating it.
+func (cls Class) Call(args []Ast, inter Interpreter) (Ast, error) {
+	inst := ClassInstance{Class: &cls, Fields: map[string]Ast{}}
+	ctor, ok := cls.Methods["init"]
+	if ok {
+		ctor.bind(&inst).Call(args, inter)
+	}
+	return inst, nil
+}
+
+func (cls Class) Arity() int {
+	ctor, ok := cls.Methods["init"]
+	if !ok {
+		return 0
+	}
+	return ctor.Arity()
+}
+
+type ClassInstance struct {
+	Class  *Class
+	Fields map[string]Ast
+}
+
+func (instance ClassInstance) get(fieldName string) (Ast, error) {
+	val, ok := instance.Fields[fieldName]
+	if ok {
+		return val, nil
+	}
+	meth, ok := instance.Class.Methods[fieldName]
+	if ok {
+		return meth.bind(&instance), nil
+	}
+	return nil, fmt.Errorf("Class instance has no field named %s", fieldName)
+}
+
+func (instance ClassInstance) set(fieldName string, val Ast) {
+	instance.Fields[fieldName] = val
+}
+
+// Get class field
+type Get struct {
+	Lhs       Ast
+	FieldName string
+}
+
+// Set class field
+type Set struct {
+	Lhs       Ast
+	FieldName string
+	Val       Ast
+}
+
+type This struct {
+	Depth int
 }
 
 // Maps tokens to their corresponding BinaryOperator if such a mapping exists.
@@ -362,13 +449,28 @@ func prettyPrintAst(node Ast, indent int) {
 			first = false
 			fmt.Printf("%s", param)
 		}
-		fmt.Printf(" and with body:")
+		fmt.Printf(" and with body:\n")
 		prettyPrintAst(node.Body, indent+INDENT_LVL)
 
 	case ReturnStmt:
 		node := node.(ReturnStmt)
 		fmt.Printf("Return:\n")
 		prettyPrintAst(node.Val, indent+INDENT_LVL)
+
+	case ClassDecl:
+		node := node.(ClassDecl)
+		fmt.Printf("Class declaration of %s with methods:\n", node.Name)
+		for _, fn := range node.Methods {
+			prettyPrintAst(fn, indent+INDENT_LVL)
+		}
+
+	case Class:
+		node := node.(Class)
+		fmt.Printf("Class %s", node.Name)
+
+	case ClassInstance:
+		node := node.(ClassInstance)
+		fmt.Printf("Instance of class %s", node.Class.Name)
 
 	default:
 		fmt.Printf("Error pretty-printing AST, unknown node type: %s", t)

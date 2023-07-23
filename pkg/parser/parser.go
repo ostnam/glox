@@ -41,7 +41,36 @@ func parseDeclaration(tokens []Token, pos *int) (eval.Ast, error) {
 		utils.Advance(tokens, pos)
 		return parseFunDecl(tokens, pos)
 	}
+	if utils.MatchTokenType(tokens, pos, Class) {
+		return parseClassDecl(tokens, pos)
+	}
 	return parseStatement(tokens, pos)
+}
+
+func parseClassDecl(tokens []Token, pos *int) (eval.Ast, error) {
+	className := utils.Advance(tokens, pos)
+	if className.Type != Identifier {
+		return nil, fmt.Errorf("Expected class name, instead got the token: %v", className)
+	}
+	if !utils.MatchTokenType(tokens, pos, LeftBrace) {
+		return nil, fmt.Errorf("Missing { after declaring class name.")
+	}
+	methods := []eval.Fn{}
+	for !utils.PeekMatchesTokType(tokens, *pos, RightBrace) && !utils.IsAtEnd(tokens, *pos) {
+		method, err := parseFunDecl(tokens, pos)
+		if err != nil {
+			return nil, err
+		}
+		fn, ok := method.(eval.FnDecl)
+		if !ok {
+			return nil, fmt.Errorf("INTERNAL BUG: parseFunDecl didn't return an FnDecl")
+		}
+		methods = append(methods, fn.AsFn(nil))
+	}
+	if !utils.MatchTokenType(tokens, pos, RightBrace) {
+		return nil, fmt.Errorf("Missing } after declaring class methods.")
+	}
+	return eval.ClassDecl{Name: className.Lexeme, Methods: methods}, nil
 }
 
 // Parsed a variable declaration of the form var x; or var x = 10;
@@ -373,14 +402,22 @@ func parseAssignment(tokens []Token, pos *int) (eval.Ast, error) {
 		if err != nil {
 			return nil, err
 		}
-		lhs, ok := expr.(eval.Identifier)
-		if !ok {
-			return nil, fmt.Errorf("Incorrect left hand side of assignment: %v", lhs)
+		id, ok := expr.(eval.Identifier)
+		if ok {
+			return eval.Assignment{
+				Name: id,
+				Val:  rhs,
+			}, nil
 		}
-		return eval.Assignment{
-			Name: lhs,
-			Val:  rhs,
-		}, nil
+		get, ok := expr.(eval.Get)
+		if ok {
+			return eval.Set{
+				Lhs:       get.Lhs,
+				FieldName: get.FieldName,
+				Val:       rhs,
+			}, nil
+		}
+		return nil, fmt.Errorf("Incorrect left-hand side of assignment: %v", expr)
 	}
 	return expr, nil
 }
@@ -531,20 +568,28 @@ func parseFnCall(tokens []Token, pos *int) (eval.Ast, error) {
 	if err != nil {
 		return nil, err
 	}
-	for utils.MatchTokenType(tokens, pos, LeftParen) {
-		args := []eval.Ast{}
-		if !utils.PeekMatchesTokType(tokens, *pos, RightParen) {
-			args, err = parseArgumentList(tokens, pos)
-			if err != nil {
-				return nil, err
+	for utils.PeekMatchesTokType(tokens, *pos, LeftParen, Dot) {
+		if utils.MatchTokenType(tokens, pos, LeftParen) {
+			args := []eval.Ast{}
+			if !utils.PeekMatchesTokType(tokens, *pos, RightParen) {
+				args, err = parseArgumentList(tokens, pos)
+				if err != nil {
+					return nil, err
+				}
+				if len(args) >= 255 {
+					maxNumArgsExceeded = fmt.Errorf("Exceeded the maximum (254) number of arguments passed to a function")
+				}
 			}
-			if len(args) >= 255 {
-				maxNumArgsExceeded = fmt.Errorf("Exceeded the maximum (254) number of arguments passed to a function")
+			expr = eval.FnCall{Fn: expr, Args: args}
+			if !utils.MatchTokenType(tokens, pos, RightParen) {
+				return nil, errors.New("Error parsing function call")
 			}
-		}
-		expr = eval.FnCall{Fn: expr, Args: args}
-		if !utils.MatchTokenType(tokens, pos, RightParen) {
-			return nil, errors.New("Error parsing function call")
+		} else if utils.MatchTokenType(tokens, pos, Dot) {
+			fieldName := utils.Advance(tokens, pos)
+			if fieldName.Type != Identifier {
+				return nil, fmt.Errorf("Incorrect field access.")
+			}
+			expr = eval.Get{Lhs: expr, FieldName: fieldName.Lexeme}
 		}
 	}
 	return expr, maxNumArgsExceeded
@@ -569,6 +614,9 @@ func parseArgumentList(tokens []Token, pos *int) ([]eval.Ast, error) {
 }
 
 func parsePrimary(tokens []Token, pos *int) (eval.Ast, error) {
+	if utils.MatchTokenType(tokens, pos, This) {
+		return eval.This{}, nil
+	}
 	if utils.MatchTokenType(tokens, pos, False) {
 		return eval.Bool{Val: false}, nil
 	}
