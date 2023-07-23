@@ -265,6 +265,11 @@ func (res Resolver) Resolve(node Ast) (Ast, error) {
 
 	case FnCall:
 		node := node.(FnCall)
+		newFn, err := res.Resolve(node.Fn)
+		if err != nil {
+			return nil, err
+		}
+		node.Fn = newFn
 		newArgs := []Ast{}
 		for _, expr := range node.Args {
 			newArg, err := res.Resolve(expr)
