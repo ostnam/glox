@@ -14,7 +14,7 @@ type Ast interface{}
 // Interface of every Ast callable type
 type Callable interface {
 	Call([]Ast, Interpreter) (Ast, error)
-	Arity() int  // number of args a function takes
+	Arity() int // number of args a function takes
 }
 
 // Ast node for unary operations
@@ -78,7 +78,7 @@ type Bool struct {
 }
 
 // AST node for the lox nil
-type Nil struct {}
+type Nil struct{}
 
 // AST node for expressions between parentheses
 type Grouping struct {
@@ -100,23 +100,23 @@ const (
 
 // The name of a variable
 type Identifier struct {
-	Name  string
+	Name string
 
-    // Different variables sharing the same name can be declared in different scopes.
-    //
-    // An identifier refers to the latest declared variable with that name, in the
-    // innermost scope that encloses the current expression.
-    //
-    // Before executing any Lox code, the resolver will statically analyze it to
-    // set the Depth field, which indicates how many scopes do we have to look back
-    // through to reach the variable that an identifier refers to.
+	// Different variables sharing the same name can be declared in different scopes.
+	//
+	// An identifier refers to the latest declared variable with that name, in the
+	// innermost scope that encloses the current expression.
+	//
+	// Before executing any Lox code, the resolver will statically analyze it to
+	// set the Depth field, which indicates how many scopes do we have to look back
+	// through to reach the variable that an identifier refers to.
 	Depth int
 }
 
 // AST node for declaring a variable without setting a value, ie:
 // var x;
 type VarDecl struct {
-	Name Identifier  // Name of the variable being declared
+	Name Identifier // Name of the variable being declared
 }
 
 // AST node for declaring a variable and setting a value, ie:
@@ -187,10 +187,10 @@ func (fn BuiltinFn) Arity() int {
 
 // AST node for user-defined functions
 type Fn struct {
-	Name    string    // name of the function
-	Params  []string  // name of the arguments it takes
+	Name    string   // name of the function
+	Params  []string // name of the arguments it takes
 	Body    Ast
-	Closure *Env      // pointer to the environment in which the function was created
+	Closure *Env // pointer to the environment in which the function was created
 	Type    FnType
 	IsCtor  bool
 }
@@ -211,19 +211,19 @@ func (fn Fn) Call(args []Ast, interpreter Interpreter) (Ast, error) {
 		return nil, err
 	}
 
-    // We need to unwrap return statements, since evaluating their value
-    // stops the execution of the current block.
+	// We need to unwrap return statements, since evaluating their value
+	// stops the execution of the current block.
 	ret, isRet := val.(ReturnStmt)
 	if isRet {
 		return ret.Val, nil
 	}
 
-    // Constructors should return `this`.
+	// Constructors should return `this`.
 	if fn.IsCtor {
 		return fn.Closure.getThis(This{Depth: 0})
 	}
 
-    // A function without return statement evaluates to nil.
+	// A function without return statement evaluates to nil.
 	return Nil{}, nil
 }
 
@@ -246,7 +246,7 @@ type FnDecl struct {
 }
 
 func (fn FnDecl) AsFn(env *Env) Fn {
-	return Fn {
+	return Fn{
 		Name:    fn.Name,
 		Params:  fn.Params,
 		Body:    fn.Body,
@@ -326,7 +326,7 @@ type Set struct {
 
 // AST node for the this keyword.
 type This struct {
-	Depth int  // set by the resolver, in the same manner as for Identifiers
+	Depth int // set by the resolver, in the same manner as for Identifiers
 }
 
 // Maps tokens to their corresponding BinaryOperator if such a mapping exists.

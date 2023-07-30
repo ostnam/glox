@@ -1,3 +1,4 @@
+// Defines the logic for executing Lox programs
 package eval
 
 import (
@@ -58,6 +59,9 @@ func (env *Env) setVariable(name string, val Ast) {
 	env.Store[name] = val
 }
 
+// Creates a new scope for a function call:
+// A new empty environment is created, whose parent is the function's closure.
+// The args passed to the function call are set as variable of this environment.
 func (self Interpreter) newFnScope(params []string, args []Ast, closure *Env) Interpreter {
 	env := newEnv()
 	env.Parent = closure
