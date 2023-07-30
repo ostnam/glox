@@ -76,7 +76,11 @@ func (self Interpreter) newFnScope(params []string, args []Ast, closure *Env) In
 
 func (self Interpreter) readVariable(id Identifier) (Ast, error) {
 	if id.Depth == -1 {
-		return nil, fmt.Errorf("Unresolved identifier: %v", id)
+       val, ok := self.globals.Store[id.Name]
+       if !ok {
+               return nil, fmt.Errorf("Tried to read undefined global variable %s", id.Name)
+       }
+       return val, nil
 	}
 	return self.currentEnv.readVariable(id)
 }
