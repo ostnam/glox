@@ -16,14 +16,18 @@ const (
 )
 
 func NewResolver() Resolver {
-	return Resolver{scopes: []map[string]bool{}, currentFn: None}
+	return Resolver{
+		scopes:       []map[string]bool{map[string]bool{}},
+		currentFn:    None,
+		currentClass: none,
+	}
 }
 
 func (res Resolver) Resolve(node Ast) (Ast, error) {
 	switch t := node.(type) {
 	case This:
 		if res.currentClass == none {
-			return nil, fmt.Errorf("Used this outside of class declaration.")
+			return nil, fmt.Errorf("Used 'this' outside of class declaration.")
 		}
 		node := node.(This)
 		return res.resolveThis(node), nil
