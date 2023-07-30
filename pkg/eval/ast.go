@@ -262,12 +262,14 @@ type ReturnStmt struct {
 type ClassDecl struct {
 	Name    string
 	Methods []Fn
+	Super   *Identifier
 }
 
 // AST node used to represent classes at runtime.
 type Class struct {
 	Name    string
 	Methods map[string]Fn
+	Super   *Class
 }
 
 // Calling a class == instantiating it.
@@ -303,6 +305,12 @@ func (instance ClassInstance) get(fieldName string) (Ast, error) {
 	if ok {
 		return meth.bind(&instance), nil
 	}
+	if instance.Class.Super != nil {
+		meth, ok := instance.Class.Super.Methods[fieldName]
+		if ok {
+			return meth.bind(&instance), nil
+		}
+	}
 	return nil, fmt.Errorf("Class instance has no field named %s", fieldName)
 }
 
@@ -327,6 +335,12 @@ type Set struct {
 // AST node for the this keyword.
 type This struct {
 	Depth int // set by the resolver, in the same manner as for Identifiers
+}
+
+// Used to access methods of the superclass
+type Super struct {
+	Super    Identifier
+	MethName Identifier
 }
 
 // Maps tokens to their corresponding BinaryOperator if such a mapping exists.
@@ -488,6 +502,9 @@ func prettyPrintAst(node Ast, indent int) {
 	case ClassInstance:
 		node := node.(ClassInstance)
 		fmt.Printf("Instance of class %s", node.Class.Name)
+	case Super:
+		node := node.(Super)
+		fmt.Printf("Super: accessing method  %v", node.MethName)
 	default:
 		fmt.Printf("Error pretty-printing AST, unknown node type: %s", t)
 	}

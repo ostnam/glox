@@ -52,6 +52,14 @@ func parseClassDecl(tokens []Token, pos *int) (eval.Ast, error) {
 	if className.Type != Identifier {
 		return nil, fmt.Errorf("Expected class name, instead got the token: %v", className)
 	}
+	var super *eval.Identifier = nil
+	if utils.MatchTokenType(tokens, pos, Less) {
+		name := utils.Advance(tokens, pos)
+		if name.Type != Identifier {
+			return nil, fmt.Errorf("Expected name of superclass, got: %v", name)
+		}
+		super = &eval.Identifier{Name: name.Lexeme, Depth: -1}
+	}
 	if !utils.MatchTokenType(tokens, pos, LeftBrace) {
 		return nil, fmt.Errorf("Missing { after declaring class name.")
 	}
@@ -70,7 +78,7 @@ func parseClassDecl(tokens []Token, pos *int) (eval.Ast, error) {
 	if !utils.MatchTokenType(tokens, pos, RightBrace) {
 		return nil, fmt.Errorf("Missing } after declaring class methods.")
 	}
-	return eval.ClassDecl{Name: className.Lexeme, Methods: methods}, nil
+	return eval.ClassDecl{Name: className.Lexeme, Methods: methods, Super: super}, nil
 }
 
 // Parsed a variable declaration of the form var x; or var x = 10;
@@ -654,6 +662,19 @@ func parsePrimary(tokens []Token, pos *int) (eval.Ast, error) {
 	if utils.MatchTokenType(tokens, pos, Identifier) {
 		prev := utils.Previous(tokens, *pos)
 		return eval.Identifier{Name: prev.Literal, Depth: -1}, nil
+	}
+	if utils.MatchTokenType(tokens, pos, Super) {
+		if !utils.MatchTokenType(tokens, pos, Dot) {
+			return nil, fmt.Errorf("Super needs to be followed by a dot and the method name.")
+		}
+		id := utils.Advance(tokens, pos)
+		if id == nil || id.Type != Identifier {
+			return nil, fmt.Errorf("Keyword super not followed by an identifier but by: %v", id)
+		}
+		return eval.Super{
+			Super:    eval.Identifier{Name: "super", Depth: -1},
+			MethName: eval.Identifier{Name: id.Lexeme, Depth: -1},
+		}, nil
 	}
 	// This is the bottom of the parser, if we reach this line, nothing has
 	// matched. To avoid going into an endless loop, we synchronize, otherwise

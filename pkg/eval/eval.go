@@ -76,11 +76,7 @@ func (self Interpreter) newFnScope(params []string, args []Ast, closure *Env) In
 
 func (self Interpreter) readVariable(id Identifier) (Ast, error) {
 	if id.Depth == -1 {
-		val, ok := self.globals.Store[id.Name]
-		if !ok {
-			return nil, fmt.Errorf("Tried to read undefined global variable %s", id.Name)
-		}
-		return val, nil
+		return nil, fmt.Errorf("Unresolved identifier: %v", id)
 	}
 	return self.currentEnv.readVariable(id)
 }
@@ -138,6 +134,27 @@ func (env Env) ancestor(dist int) (*Env, error) {
 
 func (self *Interpreter) Eval(node Ast) (Ast, error) {
 	switch t := node.(type) {
+	case Super:
+		node := node.(Super)
+		super, err := self.readVariable(node.Super)
+		if err != nil {
+			return nil, err
+		}
+		superCls, ok := super.(*Class)
+		if !ok {
+			return nil, fmt.Errorf("Super isn't a class")
+		}
+		meth, ok := superCls.Methods[node.MethName.Name]
+		if !ok {
+			return nil, fmt.Errorf("Superclass named %s has no method named %s", superCls.Name, node.MethName.Name)
+		}
+		thisEnv, err := self.currentEnv.ancestor(node.Super.Depth - 1)
+		if err != nil {
+			return nil, err
+		}
+		this := thisEnv.Store["this"].(*ClassInstance)
+		return meth.bind(this), nil
+
 	case This:
 		node := node.(This)
 		return self.currentEnv.getThis(node)
@@ -147,6 +164,10 @@ func (self *Interpreter) Eval(node Ast) (Ast, error) {
 		evald_lhs, err := self.Eval(node.Lhs)
 		if err != nil {
 			return nil, err
+		}
+		asPtr, isPtr := evald_lhs.(*ClassInstance)
+		if isPtr {
+			evald_lhs = *asPtr
 		}
 		lhs_inst, ok := evald_lhs.(ClassInstance)
 		if !ok {
@@ -165,14 +186,34 @@ func (self *Interpreter) Eval(node Ast) (Ast, error) {
 		if err != nil {
 			return nil, err
 		}
+		asPtr, isPtr := evald.(*ClassInstance)
+		if isPtr {
+			evald = *asPtr
+		}
 		instance, ok := evald.(ClassInstance)
 		if !ok {
-			return nil, fmt.Errorf("Tried to access field of non-class instance.")
+			return nil, fmt.Errorf("Tried to access field of non-class instance: %v", evald)
 		}
 		return instance.get(node.FieldName)
 
 	case ClassDecl:
 		node := node.(ClassDecl)
+		var super *Class = nil
+		ogEnv := self.currentEnv
+		if node.Super != nil {
+			newEnv := self.currentEnv.newChildren()
+			self.currentEnv = &newEnv
+			superNode, err := self.Eval(*node.Super)
+			if err != nil {
+				return nil, err
+			}
+			superCls, ok := superNode.(Class)
+			if !ok {
+				return nil, fmt.Errorf("Superclass must be a class")
+			}
+			super = &superCls
+			self.currentEnv.setVariable("super", super)
+		}
 		methods := map[string]Fn{}
 		for _, method := range node.Methods {
 			method.Closure = self.currentEnv
@@ -184,7 +225,9 @@ func (self *Interpreter) Eval(node Ast) (Ast, error) {
 		newClass := Class{
 			Name:    node.Name,
 			Methods: methods,
+			Super:   super,
 		}
+		self.currentEnv = ogEnv
 		self.currentEnv.setVariable(node.Name, newClass)
 		return Nil{}, nil
 

@@ -13,11 +13,12 @@ type ClassType uint8
 const (
 	none ClassType = iota
 	class
+	subclass
 )
 
 func NewResolver() Resolver {
 	return Resolver{
-		scopes:       []map[string]bool{map[string]bool{}},
+		scopes:       []map[string]bool{{}},
 		currentFn:    None,
 		currentClass: none,
 	}
@@ -25,6 +26,18 @@ func NewResolver() Resolver {
 
 func (res Resolver) Resolve(node Ast) (Ast, error) {
 	switch t := node.(type) {
+	case Super:
+		if res.currentClass != subclass {
+			return nil, fmt.Errorf("Used 'super' outside of a subclass.")
+		}
+		node := node.(Super)
+		super, err := res.Resolve(node.Super)
+		if err != nil {
+			return nil, err
+		}
+		node.Super = super.(Identifier)
+		return node, nil
+
 	case This:
 		if res.currentClass == none {
 			return nil, fmt.Errorf("Used 'this' outside of class declaration.")
@@ -58,9 +71,26 @@ func (res Resolver) Resolve(node Ast) (Ast, error) {
 	case ClassDecl:
 		node := node.(ClassDecl)
 		prevClass := res.currentClass
-		res.currentClass = class
+		if node.Super != nil {
+			res.currentClass = subclass
+		} else {
+			res.currentClass = class
+		}
 		res.declare(node.Name)
 		res.define(node.Name)
+		if node.Super != nil {
+			if node.Super.Name == node.Name {
+				return nil, fmt.Errorf("Class %s can't inherit from itself", node.Name)
+			}
+			res.beginScope()
+			res.scopes[len(res.scopes)-1]["super"] = true
+			resolvedSuper, err := res.Resolve(*node.Super)
+			if err != nil {
+				return nil, err
+			}
+			newSuper := resolvedSuper.(Identifier)
+			node.Super = &newSuper
+		}
 		res.beginScope()
 		res.scopes[len(res.scopes)-1]["this"] = true
 		newMethods := []Fn{}
@@ -79,6 +109,9 @@ func (res Resolver) Resolve(node Ast) (Ast, error) {
 		}
 		node.Methods = newMethods
 		res.endScope()
+		if node.Super != nil {
+			res.endScope()
+		}
 		res.currentClass = prevClass
 
 		return node, nil
