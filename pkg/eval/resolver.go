@@ -145,7 +145,7 @@ func (res Resolver) Resolve(node Ast) (Ast, error) {
 		if l != 0 && (alreadyDeclared && !alreadyDefined) {
 			return nil, fmt.Errorf("Can't read variable %s in its own initializer", node.Name)
 		}
-		return res.resolveLocal(node), nil
+		return res.resolveLocal(node)
 
 	case Assignment:
 		node := node.(Assignment)
@@ -153,7 +153,10 @@ func (res Resolver) Resolve(node Ast) (Ast, error) {
 		if err != nil {
 			return nil, err
 		}
-		newName := res.resolveLocal(node.Name)
+		newName, err := res.resolveLocal(node.Name)
+        if err != nil {
+            return nil, err
+        }
 		return Assignment{Name: newName, Val: newVal}, nil
 
 	case FnDecl:
@@ -364,14 +367,22 @@ func (res *Resolver) define(name string) {
 	res.scopes[l-1][name] = true
 }
 
-func (res *Resolver) resolveLocal(node Identifier) Identifier {
+func (res *Resolver) resolveLocal(node Identifier) (Identifier, error) {
+    resolved := false
 	for i := len(res.scopes) - 1; i >= 0; i-- {
 		_, ok := res.scopes[i][node.Name]
 		if ok {
+            resolved = true
 			node.Depth = len(res.scopes) - 1 - i
 		}
 	}
-	return node
+    if !resolved {
+        _, ok := globals[node.Name]
+        if !ok {
+            return node, fmt.Errorf("Undefined variable %s", node.Name)
+        }
+    }
+	return node, nil
 }
 
 func (res *Resolver) resolveThis(this This) This {
