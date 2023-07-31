@@ -4,7 +4,6 @@ package eval
 import (
 	"fmt"
 	"reflect"
-	"time"
 
 	"github.com/ostnam/glox/pkg/tokens"
 )
@@ -32,19 +31,9 @@ func newEnv() Env {
 }
 
 func newGlobals() Env {
-	store := map[string]Ast{}
-	store["clock"] = BuiltinFn{
-		CallFn: func(val []Ast) (Ast, error) {
-			return Num{
-				Val: float64(time.Now().UnixMilli()),
-			}, nil
-		},
-		ArityVal: 0,
-	}
-
 	return Env{
 		Parent: nil,
-		Store:  store,
+		Store:  globals,
 	}
 }
 
