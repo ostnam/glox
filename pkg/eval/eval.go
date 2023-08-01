@@ -510,9 +510,6 @@ func (self *Interpreter) Eval(node Ast) (Ast, error) {
 	}
 }
 
-func (self *Interpreter) resolve(node Ast, depth int) {
-}
-
 func isTruthy(val Ast) bool {
 	switch val.(type) {
 	case Nil:
